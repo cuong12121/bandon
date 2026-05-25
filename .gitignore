@@ -1,1 +1,5 @@
 rtsp_config.py
+
+# Ignore generated data
+video/
+excel/
