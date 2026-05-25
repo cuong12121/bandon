@@ -54,6 +54,27 @@ def log_closed_code(barcode, video_path):
     wb.save(excel_path)
 
 
+def is_barcode_closed(barcode):
+    if not barcode:
+        return False
+
+    now = datetime.now()
+    excel_path = get_excel_path(now)
+    if not excel_path.exists():
+        return False
+
+    wb = load_workbook(excel_path, data_only=True)
+    ws = wb.active
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=2, values_only=True):
+        val = row[0]
+        if val is None:
+            continue
+        if str(val).strip() == str(barcode).strip():
+            return True
+
+    return False
+
+
 def new_filename():
     global current_barcode
 
@@ -176,10 +197,16 @@ def on_barcode_enter(event):
     if not code:
         return
 
+    # Nếu mã đã được đóng trước đó -> thông báo và không xử lý
+    if is_barcode_closed(code):
+        status.config(text=f"⚠️ Mã vạch {code} đã đóng")
+        barcode_entry.delete(0, tk.END)
+        return
+
     pending_barcode = code
     barcode_entry.delete(0, tk.END)
 
-    status.config(text=f"📦 Đã bắn: {pending_barcode}")
+    status.config(text=f"✅ Bắn thành công: {pending_barcode}")
 
     cut_record()
 

@@ -4,10 +4,16 @@ from pathlib import Path
 
 import webview
 from openpyxl import load_workbook
+import http.server
+import socketserver
+import threading
+import urllib.parse
+import functools
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_ROOT = BASE_DIR / "excel"
 PAGE_SIZE = 20
+VIDEO_ROOT = BASE_DIR / "video"
 
 
 def get_today_excel_path():
@@ -64,12 +70,11 @@ def load_today_orders():
         resolved_video = resolve_video_path(video_raw)
         exists = resolved_video.exists()
         rows.append({
-            "close_time": str(close_time),
-            "barcode": str(barcode),
-            "video_path": str(resolved_video),
-            "video_uri": resolved_video.as_uri() if exists else "",
-            "exists": exists,
-            "sort_key": sort_key.isoformat(),
+          "close_time": str(close_time),
+          "barcode": str(barcode),
+          "video_path": str(resolved_video),
+          "exists": exists,
+          "sort_key": sort_key.isoformat(),
         })
 
     rows.sort(key=lambda item: item["sort_key"], reverse=True)
@@ -347,10 +352,44 @@ def build_html(rows, excel_path):
 
 
 def main():
-    rows, excel_path = load_today_orders()
-    html = build_html(rows, excel_path)
-    webview.create_window("Danh sach don", html=html, width=1200, height=760)
+  # start tiny HTTP server to serve video files from VIDEO_ROOT
+  VIDEO_ROOT.mkdir(parents=True, exist_ok=True)
+
+  handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(VIDEO_ROOT))
+  server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
+  port = server.server_address[1]
+
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+
+  base_url = f"http://127.0.0.1:{port}"
+
+  rows, excel_path = load_today_orders()
+
+  # convert video paths to http URLs served by the tiny server when possible
+  for item in rows:
+    if item.get('exists'):
+      try:
+        p = Path(item['video_path'])
+        rel = p.relative_to(VIDEO_ROOT)
+        # quote each segment to preserve slashes
+        quoted = "/".join(urllib.parse.quote(part) for part in rel.parts)
+        item['video_uri'] = base_url + "/" + quoted
+      except Exception:
+        # fallback to file:// URI if not under VIDEO_ROOT
+        try:
+          item['video_uri'] = Path(item['video_path']).as_uri()
+        except Exception:
+          item['video_uri'] = ""
+    else:
+      item['video_uri'] = ""
+
+  html = build_html(rows, excel_path)
+  webview.create_window("Danh sach don", html=html, width=1200, height=760)
+  try:
     webview.start()
+  finally:
+    server.shutdown()
 
 
 if __name__ == "__main__":
