@@ -3,8 +3,7 @@ import subprocess
 from datetime import datetime
 import signal
 import time
-
-rtsp_url = "rtsp://admin:GJTMIL@192.168.1.91:554/ch1/main"
+from rtsp_config import rtsp_url
 
 recording = False
 ffmpeg_process = None
