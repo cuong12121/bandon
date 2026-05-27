@@ -330,6 +330,25 @@ def build_html(rows, excel_path):
       }}).join('');
     }}
 
+    function autoPlayFirst() {{
+      if (!data || data.length === 0) return;
+      const first = data.find(d => d.exists && d.video_uri);
+      if (!first) return;
+      try {{
+        playVideo(first);
+        const p = player.play();
+        if (p && p.catch) {{
+          p.catch(() => {{
+            // Autoplay blocked: try muted autoplay
+            player.muted = true;
+            player.play().catch(() => {{}});
+          }});
+        }}
+      }} catch (e) {{
+        // ignore play errors
+      }}
+    }}
+
     function nextPage() {{
       const totalPages = Math.ceil(data.length / pageSize);
       if (currentPage < totalPages) {{
@@ -346,6 +365,8 @@ def build_html(rows, excel_path):
     }}
 
     renderTable();
+    // attempt to autoplay first available video
+    autoPlayFirst();
   </script>
 </body>
 </html>
