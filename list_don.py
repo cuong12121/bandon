@@ -4,11 +4,12 @@ from pathlib import Path
 
 import webview
 from openpyxl import load_workbook
-import http.server
-import socketserver
 import threading
 import urllib.parse
-import functools
+import re
+import mimetypes
+from flask import Flask, request, Response, send_file
+from werkzeug.serving import make_server
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_ROOT = BASE_DIR / "excel"
@@ -355,18 +356,11 @@ def main():
   # start tiny HTTP server to serve video files from VIDEO_ROOT
   VIDEO_ROOT.mkdir(parents=True, exist_ok=True)
 
-  handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(VIDEO_ROOT))
-  server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
-  port = server.server_address[1]
-
-  thread = threading.Thread(target=server.serve_forever, daemon=True)
-  thread.start()
-
-  base_url = f"http://127.0.0.1:{port}"
+  app = Flask(__name__)
 
   rows, excel_path = load_today_orders()
 
-  # convert video paths to http URLs served by the tiny server when possible
+  # convert video paths to flask URLs served by /video/<path:filename>
   for item in rows:
     if item.get('exists'):
       try:
@@ -374,7 +368,7 @@ def main():
         rel = p.relative_to(VIDEO_ROOT)
         # quote each segment to preserve slashes
         quoted = "/".join(urllib.parse.quote(part) for part in rel.parts)
-        item['video_uri'] = base_url + "/" + quoted
+        item['video_uri'] = f"/video/{quoted}"
       except Exception:
         # fallback to file:// URI if not under VIDEO_ROOT
         try:
@@ -385,8 +379,67 @@ def main():
       item['video_uri'] = ""
 
   html = build_html(rows, excel_path)
-  webview.create_window("Danh sach don", html=html, width=1200, height=760)
+
+  @app.route('/')
+  def index():
+    return html
+
+  def send_file_partial(path):
+    file_path = Path(path)
+    if not file_path.exists():
+      return Response('File not found', status=404)
+
+    file_size = file_path.stat().st_size
+    range_header = request.headers.get('Range', None)
+    if not range_header:
+      return send_file(str(file_path))
+
+    m = re.match(r'bytes=(\d+)-(\d*)', range_header)
+    if m:
+      start = int(m.group(1))
+      end = m.group(2)
+      end = int(end) if end else file_size - 1
+    else:
+      start = 0
+      end = file_size - 1
+
+    if start >= file_size:
+      return Response(status=416)
+
+    length = end - start + 1
+    with open(file_path, 'rb') as f:
+      f.seek(start)
+      data = f.read(length)
+
+    mime_type, _ = mimetypes.guess_type(str(file_path))
+    mime_type = mime_type or 'application/octet-stream'
+
+    rv = Response(data, 206, mimetype=mime_type, direct_passthrough=True)
+    rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
+    rv.headers.add('Accept-Ranges', 'bytes')
+    rv.headers.add('Content-Length', str(length))
+    return rv
+
+  @app.route('/video/<path:filename>')
+  def video(filename):
+    safe_path = (VIDEO_ROOT / filename).resolve()
+    try:
+      # ensure file is under VIDEO_ROOT
+      safe_path.relative_to(VIDEO_ROOT.resolve())
+    except Exception:
+      return Response('Forbidden', status=403)
+    return send_file_partial(safe_path)
+
+  # start flask server on an ephemeral port in background
+  server = make_server('127.0.0.1', 0, app)
+  port = server.socket.getsockname()[1]
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+
+  base_url = f"http://127.0.0.1:{port}"
+
   try:
+    webview.create_window("Danh sach don", url=base_url + '/', width=1200, height=760)
     webview.start()
   finally:
     server.shutdown()
