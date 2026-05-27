@@ -330,25 +330,6 @@ def build_html(rows, excel_path):
       }}).join('');
     }}
 
-    function autoPlayFirst() {{
-      if (!data || data.length === 0) return;
-      const first = data.find(d => d.exists && d.video_uri);
-      if (!first) return;
-      try {{
-        playVideo(first);
-        const p = player.play();
-        if (p && p.catch) {{
-          p.catch(() => {{
-            // Autoplay blocked: try muted autoplay
-            player.muted = true;
-            player.play().catch(() => {{}});
-          }});
-        }}
-      }} catch (e) {{
-        // ignore play errors
-      }}
-    }}
-
     function nextPage() {{
       const totalPages = Math.ceil(data.length / pageSize);
       if (currentPage < totalPages) {{
@@ -365,8 +346,6 @@ def build_html(rows, excel_path):
     }}
 
     renderTable();
-    // attempt to autoplay first available video
-    autoPlayFirst();
   </script>
 </body>
 </html>
@@ -379,18 +358,9 @@ def main():
 
   app = Flask(__name__)
 
-
-  # start flask server on an ephemeral port in background
-  server = make_server('127.0.0.1', 0, app)
-  port = server.socket.getsockname()[1]
-  thread = threading.Thread(target=server.serve_forever, daemon=True)
-  thread.start()
-
-  base_url = f"http://127.0.0.1:{port}"
-
   rows, excel_path = load_today_orders()
 
-  # convert video paths to absolute flask URLs served by /video/<path:filename>
+  # convert video paths to flask URLs served by /video/<path:filename>
   for item in rows:
     if item.get('exists'):
       try:
@@ -398,7 +368,7 @@ def main():
         rel = p.relative_to(VIDEO_ROOT)
         # quote each segment to preserve slashes
         quoted = "/".join(urllib.parse.quote(part) for part in rel.parts)
-        item['video_uri'] = base_url + f"/video/{quoted}"
+        item['video_uri'] = f"/video/{quoted}"
       except Exception:
         # fallback to file:// URI if not under VIDEO_ROOT
         try:
@@ -437,24 +407,14 @@ def main():
       return Response(status=416)
 
     length = end - start + 1
-
-    def generate():
-      with open(file_path, 'rb') as f:
-        f.seek(start)
-        remaining = length
-        chunk_size = 64 * 1024
-        while remaining > 0:
-          read_size = min(chunk_size, remaining)
-          chunk = f.read(read_size)
-          if not chunk:
-            break
-          remaining -= len(chunk)
-          yield chunk
+    with open(file_path, 'rb') as f:
+      f.seek(start)
+      data = f.read(length)
 
     mime_type, _ = mimetypes.guess_type(str(file_path))
     mime_type = mime_type or 'application/octet-stream'
 
-    rv = Response(generate(), 206, mimetype=mime_type, direct_passthrough=True)
+    rv = Response(data, 206, mimetype=mime_type, direct_passthrough=True)
     rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
     rv.headers.add('Accept-Ranges', 'bytes')
     rv.headers.add('Content-Length', str(length))
