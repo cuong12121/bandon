@@ -439,7 +439,7 @@ def main():
   base_url = f"http://127.0.0.1:{port}"
 
   try:
-    webview.create_window("Danh sach don", url=base_url + '/', width=1200, height=760)
+    webview.create_window(base_url, url=base_url + '/', width=1200, height=760)
     webview.start()
   finally:
     server.shutdown()
