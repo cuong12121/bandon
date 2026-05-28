@@ -440,7 +440,19 @@ def main():
 
   try:
     webview.create_window(base_url, url=base_url + '/', width=1200, height=760)
-    webview.start()
+
+    # Prefer Chromium (CEF) backend when available (gives Chrome-like rendering).
+    use_cef = False
+    try:
+      import cefpython3  # type: ignore
+      use_cef = True
+    except Exception:
+      use_cef = False
+
+    if use_cef:
+      webview.start(gui='cef')
+    else:
+      webview.start()
   finally:
     server.shutdown()
 
