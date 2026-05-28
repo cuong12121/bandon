@@ -8,6 +8,9 @@ import threading
 import urllib.parse
 import re
 import mimetypes
+import os
+import subprocess
+import webbrowser
 from flask import Flask, request, Response, send_file
 from werkzeug.serving import make_server
 
@@ -281,15 +284,19 @@ def build_html(rows, excel_path):
     const nextBtn = document.getElementById('nextBtn');
 
     function playVideo(item) {{
-      if (!item.video_uri) {{
-        player.removeAttribute('src');
-        player.load();
-        info.textContent = 'Khong tim thay file video: ' + item.video_path;
+      var url = item.video_uri || item.video_path || '';
+      if (!url) {{
+        info.textContent = 'Khong tim thay file video.';
         return;
       }}
 
-      player.src = item.video_uri;
-      player.load();
+      // If pywebview API is available, ask Python to open the system browser (Chrome if possible).
+      if (window.pywebview && window.pywebview.api && window.pywebview.api.open_in_browser) {{
+        window.pywebview.api.open_in_browser(url);
+      }} else {{
+        // Fallback: open in a new window/tab
+        window.open(url, '_blank');
+      }}
       info.textContent = item.video_path;
     }}
 
@@ -368,7 +375,8 @@ def main():
         rel = p.relative_to(VIDEO_ROOT)
         # quote each segment to preserve slashes
         quoted = "/".join(urllib.parse.quote(part) for part in rel.parts)
-        item['video_uri'] = f"/video/{quoted}"
+        # make absolute URL so JS can open it externally
+        item['video_uri'] = base_url + f"/video/{quoted}"
       except Exception:
         # fallback to file:// URI if not under VIDEO_ROOT
         try:
@@ -379,6 +387,33 @@ def main():
       item['video_uri'] = ""
 
   html = build_html(rows, excel_path)
+
+  class Api:
+    def open_in_browser(self, url):
+      try:
+        if not url:
+          return False
+        # Try common Chrome locations on Windows
+        chrome_paths = [
+          os.path.join(os.environ.get('PROGRAMFILES', 'C:\\Program Files'), 'Google\\Chrome\\Application\\chrome.exe'),
+          os.path.join(os.environ.get('PROGRAMFILES(X86)', 'C:\\Program Files (x86)'), 'Google\\Chrome\\Application\\chrome.exe'),
+          os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local')), 'Google\\Chrome\\Application\\chrome.exe'),
+        ]
+        for ch in chrome_paths:
+          if os.path.exists(ch):
+            subprocess.Popen([ch, url], shell=False)
+            return True
+
+        # Fallback to default browser
+        webbrowser.open(url)
+        return True
+      except Exception:
+        try:
+          webbrowser.open(url)
+          return True
+        except Exception:
+          return False
+
 
   @app.route('/')
   def index():
@@ -439,7 +474,8 @@ def main():
   base_url = f"http://127.0.0.1:{port}"
 
   try:
-    webview.create_window(base_url, url=base_url + '/', width=1200, height=760)
+    api = Api()
+    webview.create_window(base_url, url=base_url + '/', width=1200, height=760, js_api=api)
 
     # Prefer Chromium (CEF) backend when available (gives Chrome-like rendering).
     use_cef = False
