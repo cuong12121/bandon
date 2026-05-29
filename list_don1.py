@@ -246,6 +246,7 @@ def build_html(rows, excel_path):
                 <th>Thoi gian dong</th>
                 <th>Ma vach</th>
                 <th>Video</th>
+                <th>Link Video</th>
               </tr>
             </thead>
             <tbody id=\"rows\"></tbody>
@@ -326,6 +327,7 @@ def build_html(rows, excel_path):
           '<td>' + item.close_time + '</td>' +
           '<td>' + item.barcode + '</td>' +
           '<td>' + btn + '</td>' +
+          '<td>' + item.video_uri + '</td>' +
           '</tr>';
       }}).join('');
     }}
