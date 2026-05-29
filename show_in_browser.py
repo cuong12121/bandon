@@ -97,17 +97,17 @@ def load_today_orders():
 
 
 def build_html(rows, excel_path):
-    data_json = json.dumps(rows)
-    return f"""<!doctype html>
+        data_json = json.dumps(rows)
+        template = """<!doctype html>
 <html>
 <head>
-  <meta charset=\"utf-8\" />
-  <title>Danh sach don hom nay</title>
-  <style>body{{font-family:Segoe UI, Tahoma, sans-serif;}}</style>
+    <meta charset="utf-8" />
+    <title>Danh sach don hom nay</title>
+    <style>body{font-family:Segoe UI, Tahoma, sans-serif;}</style>
 </head>
 <body>
 <h1>Danh sach don hom nay</h1>
-<div>Excel: {excel_path}</div>
+<div>Excel: __EXCEL_PATH__</div>
 <table border="1" cellpadding="6">
 <thead><tr><th>Thoi gian dong</th><th>Ma vach</th><th>Video</th><th>Link Video</th></tr></thead>
 <tbody id="rows"></tbody>
@@ -115,22 +115,24 @@ def build_html(rows, excel_path):
 <video id="player" controls style="width:100%;max-height:420px;margin-top:12px;background:#000"></video>
 
 <script>
-const data = {data_json};
+const data = __DATA_JSON__;
 const rowsEl = document.getElementById('rows');
 const player = document.getElementById('player');
 function playVideo(item){
-  if(!item.video_uri){ player.removeAttribute('src'); player.load(); return; }
-  player.src = item.video_uri; player.load();
+    if(!item.video_uri){ player.removeAttribute('src'); player.load(); return; }
+    player.src = item.video_uri; player.load();
 }
 rowsEl.innerHTML = data.map(item => '<tr>' +
-  '<td>' + item.close_time + '</td>' +
-  '<td>' + item.barcode + '</td>' +
-  '<td>' + (item.exists ? '<button onclick="playVideo('+JSON.stringify(item).replace(/</g,'\\u003c') +')">Xem</button>' : 'N/A') + '</td>' +
-  '<td>' + item.video_link + '</td>' +
-  '</tr>').join('');
+    '<td>' + item.close_time + '</td>' +
+    '<td>' + item.barcode + '</td>' +
+    '<td>' + (item.exists ? '<button onclick="playVideo('+JSON.stringify(item).replace(/</g,'\\u003c') +')">Xem</button>' : 'N/A') + '</td>' +
+    '<td>' + item.video_link + '</td>' +
+    '</tr>').join('');
 </script>
 </body>
 </html>"""
+
+        return template.replace('__DATA_JSON__', data_json).replace('__EXCEL_PATH__', str(excel_path))
 
 
 def main():
