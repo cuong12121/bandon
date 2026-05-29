@@ -97,43 +97,71 @@ def load_today_orders():
 
 
 def build_html(rows, excel_path):
-        data_json = json.dumps(rows)
-        template = """<!doctype html>
+                data_json = json.dumps(rows)
+                template = """<!doctype html>
 <html>
 <head>
-    <meta charset="utf-8" />
-    <title>Danh sach don hom nay</title>
-    <style>body{font-family:Segoe UI, Tahoma, sans-serif;}</style>
+        <meta charset="utf-8" />
+        <title>Danh sách đơn hôm nay</title>
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <style>
+                :root{--bg:#f6f8fa;--card:#ffffff;--muted:#666;--accent:#2563eb;--accent-600:#1e40af}
+                html,body{height:100%;margin:0;font-family:Segoe UI, Tahoma, sans-serif;background:var(--bg);color:#111}
+                .wrap{max-width:1100px;margin:20px auto;padding:20px}
+                .card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 6px 18px rgba(20,20,30,0.06)}
+                h1{margin:0 0 8px;font-size:20px}
+                .meta{color:var(--muted);font-size:13px;margin-bottom:12px}
+                table.orders{width:100%;border-collapse:collapse;background:transparent}
+                table.orders th, table.orders td{padding:10px 12px;text-align:left;border-bottom:1px solid #eef2f6}
+                table.orders thead th{font-weight:600;background:transparent;color:#111}
+                table.orders tbody tr:nth-child(even){background:rgba(37,99,235,0.03)}
+                table.orders tbody tr:hover{background:rgba(37,99,235,0.06)}
+                .actions button{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer}
+                .actions button:active{transform:translateY(1px)}
+                .video-wrap{margin-top:14px;background:#000;padding:8px;border-radius:8px}
+                #player{width:100%;max-height:480px;border-radius:6px;background:#000}
+                @media (max-width:700px){table.orders th:nth-child(4), table.orders td:nth-child(4){display:none}}
+        </style>
 </head>
 <body>
-<h1>Danh sach don hom nay</h1>
-<div>Excel: __EXCEL_PATH__</div>
-<table border="1" cellpadding="6">
-<thead><tr><th>Thoi gian dong</th><th>Ma vach</th><th>Video</th><th>Link Video</th></tr></thead>
-<tbody id="rows"></tbody>
-</table>
-<video id="player" controls style="width:100%;max-height:420px;margin-top:12px;background:#000"></video>
+<div class="wrap">
+    <div class="card">
+        <h1>Danh sách đơn hôm nay</h1>
+        <div class="meta">Excel: __EXCEL_PATH__</div>
+
+        <div style="overflow:auto">
+            <table class="orders" aria-label="Danh sách đơn">
+                <thead><tr><th>Thời gian đóng</th><th>Mã vạch</th><th>Video</th><th>Link Video</th></tr></thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+
+        <div class="video-wrap">
+            <video id="player" controls></video>
+        </div>
+    </div>
+</div>
 
 <script>
 const data = __DATA_JSON__;
 const rowsEl = document.getElementById('rows');
 const player = document.getElementById('player');
 function playVideo(item){
-    if(!item.video_uri){ player.removeAttribute('src'); player.load(); return; }
-    player.src = item.video_uri; player.load();
+        if(!item.video_uri){ player.removeAttribute('src'); player.load(); return; }
+        player.src = item.video_uri; player.load();
 }
 function playVideoIndex(i){ playVideo(data[i]); }
 rowsEl.innerHTML = data.map((item, i) => '<tr>' +
-    '<td>' + item.close_time + '</td>' +
-    '<td>' + item.barcode + '</td>' +
-    '<td>' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
-    '<td>' + item.video_link + '</td>' +
-    '</tr>').join('');
+        '<td>' + item.close_time + '</td>' +
+        '<td>' + item.barcode + '</td>' +
+        '<td class="actions">' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
+        '<td>' + item.video_link + '</td>' +
+        '</tr>').join('');
 </script>
 </body>
 </html>"""
 
-        return template.replace('__DATA_JSON__', data_json).replace('__EXCEL_PATH__', str(excel_path))
+                return template.replace('__DATA_JSON__', data_json).replace('__EXCEL_PATH__', str(excel_path))
 
 
 def main():
