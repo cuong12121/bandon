@@ -5,9 +5,6 @@ import signal
 import time
 from pathlib import Path
 from rtsp_config import rtsp_url
-import os
-import shutil
-import tempfile
 from openpyxl import Workbook, load_workbook
 import threading
 import json
@@ -59,86 +56,6 @@ def log_closed_code(barcode, video_path):
     ws = wb.active
     ws.append([now.strftime("%Y-%m-%d %H:%M:%S"), barcode, str(video_path)])
     wb.save(excel_path)
-
-
-def _find_font_path():
-    # common Windows fonts
-    candidates = [
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/seguiemj.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/verdana.ttf",
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def stamp_barcode_on_video(video_path, barcode):
-    """Use ffmpeg to draw barcode text at top-right corner and overwrite original file.
-    Returns True if successful.
-    """
-    if not barcode:
-        return False
-    if not os.path.exists(video_path):
-        return False
-
-    font = _find_font_path()
-    # check ffmpeg available
-    if shutil.which('ffmpeg') is None:
-        try:
-            root.after(0, lambda: status.config(text='⚠️ ffmpeg không tìm thấy trên PATH'))
-        except Exception:
-            pass
-        return False
-
-    # output to temp file then replace
-    dirp = os.path.dirname(video_path)
-    with tempfile.NamedTemporaryFile(prefix=base if (base:=os.path.splitext(os.path.basename(video_path))[0]) else 'out', suffix='.mp4', dir=dirp, delete=False) as tf:
-        tmp_out = tf.name
-
-    # prepare drawtext expression
-    text = str(barcode).replace("'", "\\'")
-    base_draw = "fontcolor=white:fontsize=28:box=1:boxcolor=0x00000099:boxborderw=6:x=w-tw-12:y=12"
-    if font:
-        draw = f"drawtext=fontfile='{font}':text='{text}':{base_draw}"
-    else:
-        draw = f"drawtext=text='{text}':{base_draw}"
-
-    cmd = [
-        'ffmpeg', '-y', '-i', str(video_path), '-vf', draw,
-        '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', tmp_out
-    ]
-
-    try:
-        proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        if proc.returncode != 0:
-            # report stderr to GUI
-            err = proc.stderr.strip()
-            try:
-                root.after(0, lambda: status.config(text=f'⚠️ ffmpeg lỗi: {err.splitlines()[-1] if err else proc.returncode}'))
-            except Exception:
-                pass
-            if os.path.exists(tmp_out):
-                try: os.remove(tmp_out)
-                except Exception: pass
-            return False
-
-        # replace original
-        shutil.move(tmp_out, video_path)
-        return True
-    except Exception as e:
-        try:
-            if os.path.exists(tmp_out):
-                os.remove(tmp_out)
-        except Exception:
-            pass
-        try:
-            root.after(0, lambda: status.config(text=f'⚠️ Lỗi đóng dấu: {e}'))
-        except Exception:
-            pass
-        return False
 
 
 def is_barcode_closed(barcode):
@@ -244,19 +161,9 @@ def cut_record():
     recording = False
     current_video_path = None
 
-    # stamp barcode onto the closed video before logging
-    try:
-        stamped = stamp_barcode_on_video(closed_video_path, closed_barcode)
-        if stamped:
-            status.config(text=f"✅ Đã đóng và đóng dấu: {closed_barcode}")
-        else:
-            status.config(text=f"⚠️ Đóng nhưng không đóng dấu: {closed_barcode}")
-    except Exception:
-        status.config(text=f"⚠️ Lỗi khi đóng dấu: {closed_barcode}")
-
     log_closed_code(closed_barcode, closed_video_path)
 
-    start_ffmpeg()   # tiếp tục ghi
+    start_ffmpeg()   # ghi tiếp
 
 
 
