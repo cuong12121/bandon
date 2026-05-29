@@ -423,19 +423,12 @@ def main():
       return Response('Forbidden', status=403)
     return send_file_partial(safe_path)
 
-  # start flask server on an ephemeral port in background
-  server = make_server('127.0.0.1', 0, app)
-  port = server.socket.getsockname()[1]
-  thread = threading.Thread(target=server.serve_forever, daemon=True)
-  thread.start()
-
-  base_url = f"http://127.0.0.1:{port}"
-
+  # show the generated HTML directly in the webview (no local HTTP server)
   try:
-    webview.create_window(base_url, url=base_url + '/', width=1200, height=760)
+    webview.create_window('Danh sach don hom nay', html=html, width=1200, height=760)
     webview.start()
   finally:
-    server.shutdown()
+    pass
 
 
 if __name__ == "__main__":
