@@ -122,10 +122,11 @@ function playVideo(item){
     if(!item.video_uri){ player.removeAttribute('src'); player.load(); return; }
     player.src = item.video_uri; player.load();
 }
-rowsEl.innerHTML = data.map(item => '<tr>' +
+function playVideoIndex(i){ playVideo(data[i]); }
+rowsEl.innerHTML = data.map((item, i) => '<tr>' +
     '<td>' + item.close_time + '</td>' +
     '<td>' + item.barcode + '</td>' +
-    '<td>' + (item.exists ? '<button onclick="playVideo('+JSON.stringify(item).replace(/</g,'\\u003c') +')">Xem</button>' : 'N/A') + '</td>' +
+    '<td>' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
     '<td>' + item.video_link + '</td>' +
     '</tr>').join('');
 </script>
