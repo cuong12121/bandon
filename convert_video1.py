@@ -6,7 +6,7 @@ cmd = [
     "ffmpeg",
     "-i", "1.mp4",
     "-vf",
-    "drawtext=text='VIDEO':x=w-tw-20:y=20:fontsize=40:fontcolor=white",
+    "drawtext=fontfile='C\:/Windows/Fonts/arial.ttf':text='VIDEO':x=w-tw-20:y=20:fontsize=40:fontcolor=white",
     "-codec:a", "copy",
     "11_cv.mp4"
 ]
