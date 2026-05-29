@@ -296,7 +296,7 @@ def build_html(rows, excel_path):
 
     function renderTable() {{
       if (data.length === 0) {{
-        rowsEl.innerHTML = '<tr><td colspan="3" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="4" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -327,7 +327,7 @@ def build_html(rows, excel_path):
           '<td>' + item.close_time + '</td>' +
           '<td>' + item.barcode + '</td>' +
           '<td>' + btn + '</td>' +
-          '<td>' + item.video_uri + '</td>' +
+          '<td>' + item.video_link + '</td>' +
           '</tr>';
       }}).join('');
     }}
@@ -366,12 +366,21 @@ def main():
   for item in rows:
     if item.get('exists'):
       try:
-        # Use the original file URI (file://) for video source instead of the local HTTP URL
-        item['video_uri'] = Path(item['video_path']).as_uri()
+        p = Path(item['video_path'])
+        # keep a playable file:// URI for the player
+        item['video_uri'] = p.as_uri()
+        # create a cleaned display link by making it relative to BASE_DIR when possible
+        try:
+          rel = p.relative_to(BASE_DIR)
+          item['video_link'] = str(rel).replace('\\', '/')
+        except Exception:
+          item['video_link'] = p.as_posix()
       except Exception:
         item['video_uri'] = ""
+        item['video_link'] = ""
     else:
       item['video_uri'] = ""
+      item['video_link'] = ""
 
   html = build_html(rows, excel_path)
 
