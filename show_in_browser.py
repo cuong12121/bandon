@@ -156,8 +156,21 @@ function playVideoIndex(i){ playVideo(data[i]); }
 rowsEl.innerHTML = data.map((item, i) => '<tr>' +
     '<td>' + item.close_time + '</td>' +
     '<td>' + item.barcode + '</td>' +
-    '<td class="actions">' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
+    '<td class="actions">' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button> <button onclick="fireBarcode(\'' + encodeURIComponent(item.barcode) + '\')">Bắn</button>' : 'N/A') + '</td>' +
     '</tr>').join('');
+
+function fireBarcode(barcode){
+    const decoded = decodeURIComponent(barcode);
+    fetch('http://127.0.0.1:8765/fire', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({barcode: decoded})
+    }).then(r=>r.json()).then(j=>{
+        alert('Bắn: ' + (j.status||j.error));
+    }).catch(e=>{
+        alert('Lỗi khi bắn: ' + e);
+    });
+}
 </script>
 </body>
 </html>"""

@@ -6,6 +6,10 @@ import time
 from pathlib import Path
 from rtsp_config import rtsp_url
 from openpyxl import Workbook, load_workbook
+import threading
+import json
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import socket
 
 recording = False
 ffmpeg_process = None
@@ -232,3 +236,76 @@ status = tk.Label(root, text="⏸️ Chưa ghi")
 status.pack(pady=10)
 
 root.mainloop()
+
+
+# ===== Background HTTP API =====
+class ApiHandler(BaseHTTPRequestHandler):
+    def _set_headers(self, code=200, content_type='application/json'):
+        self.send_response(code)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self._set_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length).decode('utf-8') if length else ''
+        try:
+            data = json.loads(body) if body else {}
+        except Exception:
+            data = {}
+
+        if self.path == '/fire':
+            barcode = data.get('barcode')
+            if not barcode:
+                self._set_headers(400)
+                self.wfile.write(json.dumps({'error': 'missing barcode'}).encode())
+                return
+
+            def do_fire():
+                global pending_barcode
+                pending_barcode = str(barcode)
+                # ensure recording
+                if not recording:
+                    start_ffmpeg()
+                    # wait a bit then cut
+                    root.after(1200, cut_record)
+                else:
+                    cut_record()
+
+            root.after(0, do_fire)
+            self._set_headers(200)
+            self.wfile.write(json.dumps({'status': 'ok', 'barcode': barcode}).encode())
+            return
+
+        if self.path == '/start':
+            root.after(0, start_ffmpeg)
+            self._set_headers(200)
+            self.wfile.write(json.dumps({'status': 'started'}).encode())
+            return
+
+        if self.path == '/stop':
+            root.after(0, stop_record)
+            self._set_headers(200)
+            self.wfile.write(json.dumps({'status': 'stopped'}).encode())
+            return
+
+        self._set_headers(404)
+        self.wfile.write(json.dumps({'error': 'not found'}).encode())
+
+
+def start_api_server(port=8765):
+    # find free port if 8765 busy
+    server = ThreadingHTTPServer(('127.0.0.1', port), ApiHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+try:
+    start_api_server()
+except Exception:
+    pass
