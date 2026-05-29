@@ -401,8 +401,18 @@ def main():
         ]
         for ch in chrome_paths:
           if os.path.exists(ch):
-            subprocess.Popen([ch, url], shell=False)
-            return True
+            # Prefer opening as a compact app window (no address bar) if supported
+            try:
+              subprocess.Popen([ch, f'--app={url}', '--window-size=900,600'], shell=False)
+              return True
+            except Exception:
+              # Fallback to a new window with specified size
+              try:
+                subprocess.Popen([ch, '--new-window', url, '--window-size=900,600'], shell=False)
+                return True
+              except Exception:
+                # try next path
+                continue
 
         # Fallback to default browser
         webbrowser.open(url)
