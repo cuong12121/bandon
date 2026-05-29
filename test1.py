@@ -85,17 +85,26 @@ def stamp_barcode_on_video(video_path, barcode):
         return False
 
     font = _find_font_path()
+    # check ffmpeg available
+    if shutil.which('ffmpeg') is None:
+        try:
+            root.after(0, lambda: status.config(text='⚠️ ffmpeg không tìm thấy trên PATH'))
+        except Exception:
+            pass
+        return False
+
     # output to temp file then replace
     dirp = os.path.dirname(video_path)
-    base = os.path.splitext(os.path.basename(video_path))[0]
-    tmp_out = os.path.join(dirp, base + "_stamped.mp4")
+    with tempfile.NamedTemporaryFile(prefix=base if (base:=os.path.splitext(os.path.basename(video_path))[0]) else 'out', suffix='.mp4', dir=dirp, delete=False) as tf:
+        tmp_out = tf.name
 
     # prepare drawtext expression
-    # position: x = w-tw-12 (right padding), y = 12
-    text = str(barcode).replace("'", "\'")
-    draw = f"drawtext=text='{text}':fontcolor=white:fontsize=28:box=1:boxcolor=0x00000099:boxborderw=6:x=w-tw-12:y=12"
+    text = str(barcode).replace("'", "\\'")
+    base_draw = "fontcolor=white:fontsize=28:box=1:boxcolor=0x00000099:boxborderw=6:x=w-tw-12:y=12"
     if font:
-        draw = f"drawtext=fontfile='{font}':text='{text}':fontcolor=white:fontsize=28:box=1:boxcolor=0x00000099:boxborderw=6:x=w-tw-12:y=12"
+        draw = f"drawtext=fontfile='{font}':text='{text}':{base_draw}"
+    else:
+        draw = f"drawtext=text='{text}':{base_draw}"
 
     cmd = [
         'ffmpeg', '-y', '-i', str(video_path), '-vf', draw,
@@ -103,14 +112,30 @@ def stamp_barcode_on_video(video_path, barcode):
     ]
 
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if proc.returncode != 0:
+            # report stderr to GUI
+            err = proc.stderr.strip()
+            try:
+                root.after(0, lambda: status.config(text=f'⚠️ ffmpeg lỗi: {err.splitlines()[-1] if err else proc.returncode}'))
+            except Exception:
+                pass
+            if os.path.exists(tmp_out):
+                try: os.remove(tmp_out)
+                except Exception: pass
+            return False
+
         # replace original
         shutil.move(tmp_out, video_path)
         return True
-    except Exception:
+    except Exception as e:
         try:
             if os.path.exists(tmp_out):
                 os.remove(tmp_out)
+        except Exception:
+            pass
+        try:
+            root.after(0, lambda: status.config(text=f'⚠️ Lỗi đóng dấu: {e}'))
         except Exception:
             pass
         return False
