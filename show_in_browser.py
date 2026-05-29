@@ -124,20 +124,22 @@ def build_html(rows, excel_path):
         </style>
 </head>
 <body>
-<div class="wrap">
+        <div class="wrap">
     <div class="card">
         <h1>Danh sách đơn hôm nay</h1>
         <div class="meta">Excel: __EXCEL_PATH__</div>
 
-        <div style="overflow:auto">
-            <table class="orders" aria-label="Danh sách đơn">
-                <thead><tr><th>Thời gian đóng</th><th>Mã vạch</th><th>Video</th><th>Link Video</th></tr></thead>
-                <tbody id="rows"></tbody>
-            </table>
-        </div>
+        <div class="grid" style="display:grid;grid-template-columns:1fr 420px;gap:18px;align-items:start">
+            <div style="overflow:auto">
+                <table class="orders" aria-label="Danh sách đơn">
+                    <thead><tr><th>Thời gian đóng</th><th>Mã vạch</th><th>Video</th></tr></thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
 
-        <div class="video-wrap">
-            <video id="player" controls></video>
+            <div class="video-wrap" style="height:100%">
+                <video id="player" controls style="width:100%;height:100%;object-fit:contain;background:#000"></video>
+            </div>
         </div>
     </div>
 </div>
@@ -152,11 +154,10 @@ function playVideo(item){
 }
 function playVideoIndex(i){ playVideo(data[i]); }
 rowsEl.innerHTML = data.map((item, i) => '<tr>' +
-        '<td>' + item.close_time + '</td>' +
-        '<td>' + item.barcode + '</td>' +
-        '<td class="actions">' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
-        '<td>' + item.video_link + '</td>' +
-        '</tr>').join('');
+    '<td>' + item.close_time + '</td>' +
+    '<td>' + item.barcode + '</td>' +
+    '<td class="actions">' + (item.exists ? '<button onclick="playVideoIndex(' + i + ')">Xem</button>' : 'N/A') + '</td>' +
+    '</tr>').join('');
 </script>
 </body>
 </html>"""
