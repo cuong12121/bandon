@@ -364,17 +364,10 @@ def main():
   for item in rows:
     if item.get('exists'):
       try:
-        p = Path(item['video_path'])
-        rel = p.relative_to(VIDEO_ROOT)
-        # quote each segment to preserve slashes
-        quoted = "/".join(urllib.parse.quote(part) for part in rel.parts)
-        item['video_uri'] = f"/video/{quoted}"
+        # Use the original file URI (file://) for video source instead of the local HTTP URL
+        item['video_uri'] = Path(item['video_path']).as_uri()
       except Exception:
-        # fallback to file:// URI if not under VIDEO_ROOT
-        try:
-          item['video_uri'] = Path(item['video_path']).as_uri()
-        except Exception:
-          item['video_uri'] = ""
+        item['video_uri'] = ""
     else:
       item['video_uri'] = ""
 
