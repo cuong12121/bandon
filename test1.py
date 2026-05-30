@@ -5,6 +5,7 @@ import signal
 import time
 from pathlib import Path
 from rtsp_config import rtsp_url
+from define_config import VALID_DEFINES, CURRENT_DEFINE
 from openpyxl import Workbook, load_workbook
 import threading
 import json
@@ -139,14 +140,41 @@ def start_record():
 def cut_record():
     global ffmpeg_process, recording, current_video_path
     global pending_barcode, current_barcode
-
-    if not recording or not ffmpeg_process:
+    # require a pending barcode and a running recording process
+    if not pending_barcode:
+        status.config(text="⚠️ Không có mã để đóng")
         return
 
-    closed_barcode = pending_barcode
+    if not recording or not ffmpeg_process:
+        status.config(text="⚠️ Chưa đang ghi")
+        return
+
+    code = str(pending_barcode).strip()
+    if not code:
+        pending_barcode = None
+        status.config(text="⚠️ Mã rỗng")
+        return
+
+    # Must have a define character at the end
+    define_char = code[-1]
+    if define_char not in VALID_DEFINES:
+        pending_barcode = None
+        status.config(text="❌ Mã vạch không đúng dạng define")
+        return
+
+    # If this machine's define doesn't match, ignore (do not cut)
+    if define_char != CURRENT_DEFINE:
+        pending_barcode = None
+        status.config(text=f"ℹ️ Mã define '{define_char}' không cho cắt trên máy này")
+        return
+
+    # OK: this machine should cut. Use the stripped code for logging/lookup
+    stripped_code = code[:-1]
+
+    closed_barcode = stripped_code
     closed_video_path = current_video_path
 
-    current_barcode = pending_barcode
+    current_barcode = closed_barcode
     pending_barcode = None
 
     try:
@@ -163,7 +191,8 @@ def cut_record():
 
     log_closed_code(closed_barcode, closed_video_path)
 
-    start_ffmpeg()   # ghi tiếp
+    # resume recording immediately
+    start_ffmpeg()
 
 
 
@@ -199,6 +228,12 @@ def on_barcode_enter(event):
 
     code = barcode_entry.get().strip()
     if not code:
+        return
+
+    # Validate define char at end
+    if code[-1] not in VALID_DEFINES:
+        status.config(text="❌ Mã vạch không đúng dạng define")
+        barcode_entry.delete(0, tk.END)
         return
 
     # Nếu mã đã được đóng trước đó -> thông báo và không xử lý
@@ -264,6 +299,17 @@ class ApiHandler(BaseHTTPRequestHandler):
             if not barcode:
                 self._set_headers(400)
                 self.wfile.write(json.dumps({'error': 'missing barcode'}).encode())
+                return
+
+            # validate define char on the posted barcode
+            try:
+                code = str(barcode).strip()
+            except Exception:
+                code = ''
+
+            if not code or code[-1] not in VALID_DEFINES:
+                self._set_headers(400)
+                self.wfile.write(json.dumps({'error': 'Mã vạch không đúng dạng define'}).encode())
                 return
 
             def do_fire():
