@@ -29,6 +29,25 @@ BASE_DIR = Path(__file__).resolve().parent
 EXCEL_ROOT = BASE_DIR / "excel"
 PAGE_SIZE = 20
 VIDEO_ROOT = BASE_DIR / "video"
+rtsp_url = "rtsp://admin:GJTMIL@192.168.1.91:554/ch1/main"
+ffmpeg_process = None
+recording = False
+current_video_path = None
+
+
+def build_daily_dir(root_dir, dt):
+    return root_dir / dt.strftime("%Y") / dt.strftime("%m") / dt.strftime("%d")
+
+
+def new_filename():
+    global current_video_path
+    now = datetime.now()
+    video_dir = build_daily_dir(VIDEO_ROOT, now)
+    video_dir.mkdir(parents=True, exist_ok=True)
+    ts = now.strftime("%Y%m%d_%H%M%S")
+    filename = video_dir / f"record_{ts}.mp4"
+    current_video_path = filename
+    return filename
 
 
 def get_today_excel_path():
@@ -323,12 +342,12 @@ def build_html(rows, excel_path, base_url):
     stopBtn.addEventListener('click', async () => {
       stopTimer();
       try {
-        const resp = await fetch('/rec_stop', { method: 'POST' });
-        if (resp.ok) {
-          await refreshData();
-          const j = await resp.json();
-          if (j && j.video) alert('Ghi video xong: ' + j.video);
-        }
+                const resp = await fetch('/rec_stop', { method: 'POST' });
+                if (resp.ok) {
+                    await refreshData();
+                    const j = await resp.json();
+                    if (j && j.video) console.info('Ghi video xong: ' + j.video);
+                }
       } catch (e) {
         console.error('Stop recording proxy failed', e);
       }
@@ -405,6 +424,60 @@ def main():
         return html
 
 
+    def start_ffmpeg():
+        global ffmpeg_process, recording, current_video_path
+
+        if recording:
+            return
+
+        filename = new_filename()
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp_url,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(filename)
+        ]
+
+        ffmpeg_process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        recording = True
+
+    def start_record():
+        global recording
+
+        if recording:
+            return
+
+        start_ffmpeg()
+
+    def stop_record():
+        global ffmpeg_process, recording, current_video_path
+
+        if not recording:
+            return
+
+        try:
+            ffmpeg_process.stdin.write(b"q")
+            ffmpeg_process.stdin.flush()
+        except:
+            pass
+
+        ffmpeg_process.wait()
+
+        ffmpeg_process = None
+        recording = False
+        current_video_path = None
+    
+
+
     @app.route('/add', methods=['POST'])
     def add():
         try:
@@ -447,14 +520,9 @@ def main():
 
     @app.route('/rec_start', methods=['POST'])
     def rec_start():
-        # proxy to test1.py start API
         try:
-            import requests
-        except Exception:
-            return jsonify({'ok': False, 'error': 'requests required'}), 500
-        try:
-            r = requests.post('http://127.0.0.1:8765/start', timeout=5)
-            return jsonify({'ok': r.status_code == 200, 'status_code': r.status_code, 'text': r.text})
+            start_record()
+            return jsonify({'ok': True})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -462,11 +530,7 @@ def main():
     @app.route('/rec_stop', methods=['POST'])
     def rec_stop():
         try:
-            import requests
-        except Exception:
-            return jsonify({'ok': False, 'error': 'requests required'}), 500
-        try:
-            r = requests.post('http://127.0.0.1:8765/stop', timeout=10)
+            stop_record()
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
