@@ -24,6 +24,7 @@ import subprocess
 import webbrowser
 from flask import Flask, request, Response, send_file, jsonify
 from werkzeug.serving import make_server
+from define_config import VALID_DEFINES
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_ROOT = BASE_DIR / "excel"
@@ -92,14 +93,21 @@ def load_today_orders():
     worksheet = workbook.active
 
     rows = []
-    for row in worksheet.iter_rows(min_row=2, max_col=4, values_only=True):
+    for row in worksheet.iter_rows(min_row=2, max_col=5, values_only=True):
         if not any(row):
             continue
 
         close_time = row[0] or ""
-        barcode = row[1] or ""
-        video_raw = row[2] or ""
-        elapsed = row[3] if len(row) > 3 and row[3] is not None else ""
+        barcode = str(row[1] or "")
+        # user is defined as the last character of the barcode if it's in VALID_DEFINES
+        user_char = ''
+        if barcode:
+            last = barcode.strip()[-1:]
+            if last in VALID_DEFINES:
+                user_char = last
+
+        video_raw = row[3] or ""
+        elapsed = row[4] if len(row) > 4 and row[4] is not None else ""
         sort_key = parse_close_time(close_time)
 
         resolved_video = resolve_video_path(video_raw)
@@ -107,6 +115,7 @@ def load_today_orders():
         rows.append({
             "close_time": str(close_time),
             "barcode": str(barcode),
+            "user": user_char,
             "video_path": str(resolved_video),
             "elapsed": str(elapsed),
             "exists": exists,
@@ -127,14 +136,21 @@ def append_order(barcode_value, elapsed_seconds=None):
     if not excel_path.exists():
         wb = Workbook()
         ws = wb.active
-        ws.append(["close_time", "barcode", "video_path", "elapsed_seconds"])
+        ws.append(["close_time", "barcode", "user", "video_path", "elapsed_seconds"])
         wb.save(excel_path)
 
     wb = load_workbook(excel_path)
     ws = wb.active
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     el = '' if elapsed_seconds is None else float(elapsed_seconds)
-    ws.append([now, str(barcode_value), "", el])
+    b = str(barcode_value or "")
+    user_char = ''
+    if b:
+        last = b.strip()[-1:]
+        if last in VALID_DEFINES:
+            user_char = last
+
+    ws.append([now, b, user_char, "", el])
     wb.save(excel_path)
 
 
@@ -195,12 +211,13 @@ def build_html(rows, excel_path, base_url):
         <div class="table-wrap">
           <table>
             <thead>
-              <tr>
-                <th>Thoi gian dong</th>
-                <th>Ma vach</th>
-                <th>Thời gian đếm</th>
-                <th>Video</th>
-              </tr>
+                            <tr>
+                                <th>Thoi gian dong</th>
+                                <th>Ma vach</th>
+                                <th>Người dùng</th>
+                                <th>Thời gian đếm</th>
+                                <th>Video</th>
+                            </tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
@@ -283,8 +300,8 @@ def build_html(rows, excel_path, base_url):
     }
 
     function renderTable() {
-      if (data.length === 0) {
-        rowsEl.innerHTML = '<tr><td colspan="4" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+            if (data.length === 0) {
+                rowsEl.innerHTML = '<tr><td colspan="5" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -300,11 +317,11 @@ def build_html(rows, excel_path, base_url):
       pageInfoEl.textContent = 'Trang ' + currentPage + '/' + totalPages;
       prevBtn.disabled = currentPage <= 1;
       nextBtn.disabled = currentPage >= totalPages;
-      rowsEl.innerHTML = pageRows.map((item, index) => {
+            rowsEl.innerHTML = pageRows.map((item, index) => {
         const actualIndex = start + index;
         const disabled = item.exists ? '' : 'disabled';
         const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-        return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
       }).join('');
     }
 
@@ -512,8 +529,8 @@ def main():
         ws = wb.active
         # find last row (append style)
         last = ws.max_row
-        # video_path is column 3 (1-based)
-        ws.cell(row=last, column=3, value=str(video_path))
+        # video_path is column 4 now (1-based): close_time, barcode, user, video_path, elapsed_seconds
+        ws.cell(row=last, column=4, value=str(video_path))
         wb.save(excel_path)
         return True
 
