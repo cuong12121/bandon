@@ -89,25 +89,30 @@ def load_today_orders():
     if not excel_path.exists():
         return [], excel_path
 
-    workbook = load_workbook(excel_path, data_only=True)
+    # load workbook for reading and possible updating user_count
+    workbook = load_workbook(excel_path)
     worksheet = workbook.active
 
     rows = []
-    for row in worksheet.iter_rows(min_row=2, max_col=5, values_only=True):
-        if not any(row):
+    # Expect columns: close_time, barcode, user, user_count, video_path, elapsed_seconds
+    for r_idx, row_cells in enumerate(worksheet.iter_rows(min_row=2, max_col=6), start=2):
+        values = [c.value for c in row_cells]
+        if not any(values):
             continue
 
-        close_time = row[0] or ""
-        barcode = str(row[1] or "")
-        # user is defined as the last character of the barcode if it's in VALID_DEFINES
-        user_char = ''
-        if barcode:
+        close_time = values[0] or ""
+        barcode = str(values[1] or "")
+        user_cell = values[2] or ""
+        # compute user from barcode if cell empty
+        user_char = str(user_cell) if user_cell else ''
+        if not user_char and barcode:
             last = barcode.strip()[-1:]
             if last in VALID_DEFINES:
                 user_char = last
 
-        video_raw = row[3] or ""
-        elapsed = row[4] if len(row) > 4 and row[4] is not None else ""
+        # stored_user_count = values[3] if len(values) > 3 else None
+        video_raw = values[4] if len(values) > 4 and values[4] is not None else ""
+        elapsed = values[5] if len(values) > 5 and values[5] is not None else ""
         sort_key = parse_close_time(close_time)
 
         resolved_video = resolve_video_path(video_raw)
@@ -116,15 +121,40 @@ def load_today_orders():
             "close_time": str(close_time),
             "barcode": str(barcode),
             "user": user_char,
+            "user_count": '',
             "video_path": str(resolved_video),
             "elapsed": str(elapsed),
             "exists": exists,
             "sort_key": sort_key.isoformat(),
+            "row_idx": r_idx,
         })
 
+    # sort for display (newest first)
     rows.sort(key=lambda item: item["sort_key"], reverse=True)
+
+    # recompute per-user sequential counts in display order and write back to excel
+    counters = {}
+    for item in rows:
+        u = item.get('user') or ''
+        if u:
+            counters[u] = counters.get(u, 0) + 1
+            item['user_count'] = str(counters[u])
+        else:
+            item['user_count'] = ''
+
+    # write back user_count to worksheet (column 4)
+    try:
+        for item in rows:
+            ws_row = item.get('row_idx')
+            if ws_row:
+                workbook.active.cell(row=ws_row, column=4, value=item.get('user_count') or '')
+        workbook.save(excel_path)
+    except Exception:
+        pass
+
     for item in rows:
         item.pop("sort_key", None)
+        item.pop("row_idx", None)
 
     return rows, excel_path
 
@@ -136,7 +166,7 @@ def append_order(barcode_value, elapsed_seconds=None):
     if not excel_path.exists():
         wb = Workbook()
         ws = wb.active
-        ws.append(["close_time", "barcode", "user", "video_path", "elapsed_seconds"])
+        ws.append(["close_time", "barcode", "user", "user_count", "video_path", "elapsed_seconds"])
         wb.save(excel_path)
 
     wb = load_workbook(excel_path)
@@ -150,7 +180,14 @@ def append_order(barcode_value, elapsed_seconds=None):
         if last in VALID_DEFINES:
             user_char = last
 
-    ws.append([now, b, user_char, "", el])
+    # compute next user_count by scanning existing rows
+    next_count = ''
+    if user_char:
+        existing = [ws.cell(row=r, column=3).value for r in range(2, ws.max_row + 1)]
+        cnt = sum(1 for v in existing if v == user_char)
+        next_count = str(cnt + 1)
+
+    ws.append([now, b, user_char, next_count, "", el])
     wb.save(excel_path)
 
 
@@ -211,13 +248,14 @@ def build_html(rows, excel_path, base_url):
         <div class="table-wrap">
           <table>
             <thead>
-                            <tr>
-                                <th>Thoi gian dong</th>
-                                <th>Ma vach</th>
-                                <th>Người dùng</th>
-                                <th>Thời gian đếm</th>
-                                <th>Video</th>
-                            </tr>
+                                <tr>
+                                    <th>Thoi gian dong</th>
+                                    <th>Ma vach</th>
+                                    <th>Người dùng</th>
+                                    <th>STT</th>
+                                    <th>Thời gian đếm</th>
+                                    <th>Video</th>
+                                </tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
@@ -301,7 +339,7 @@ def build_html(rows, excel_path, base_url):
 
     function renderTable() {
             if (data.length === 0) {
-                rowsEl.innerHTML = '<tr><td colspan="5" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                rowsEl.innerHTML = '<tr><td colspan="6" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -321,7 +359,7 @@ def build_html(rows, excel_path, base_url):
         const actualIndex = start + index;
         const disabled = item.exists ? '' : 'disabled';
         const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
       }).join('');
     }
 
@@ -529,8 +567,8 @@ def main():
         ws = wb.active
         # find last row (append style)
         last = ws.max_row
-        # video_path is column 4 now (1-based): close_time, barcode, user, video_path, elapsed_seconds
-        ws.cell(row=last, column=4, value=str(video_path))
+        # video_path is column 5 now (1-based): close_time, barcode, user, user_count, video_path, elapsed_seconds
+        ws.cell(row=last, column=5, value=str(video_path))
         wb.save(excel_path)
         return True
 

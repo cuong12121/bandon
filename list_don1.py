@@ -246,7 +246,6 @@ def build_html(rows, excel_path):
                 <th>Thoi gian dong</th>
                 <th>Ma vach</th>
                 <th>Video</th>
-                <th>Link Video</th>
               </tr>
             </thead>
             <tbody id=\"rows\"></tbody>
@@ -296,7 +295,7 @@ def build_html(rows, excel_path):
 
     function renderTable() {{
       if (data.length === 0) {{
-        rowsEl.innerHTML = '<tr><td colspan="4" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="3" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -327,7 +326,6 @@ def build_html(rows, excel_path):
           '<td>' + item.close_time + '</td>' +
           '<td>' + item.barcode + '</td>' +
           '<td>' + btn + '</td>' +
-          '<td>' + item.video_link + '</td>' +
           '</tr>';
       }}).join('');
     }}
@@ -366,21 +364,12 @@ def main():
   for item in rows:
     if item.get('exists'):
       try:
-        p = Path(item['video_path'])
-        # keep a playable file:// URI for the player
-        item['video_uri'] = p.as_uri()
-        # create a cleaned display link by making it relative to BASE_DIR when possible
-        try:
-          rel = p.relative_to(BASE_DIR)
-          item['video_link'] = str(rel).replace('\\', '/')
-        except Exception:
-          item['video_link'] = p.as_posix()
+        # Use local file URI so the player loads the video directly from disk
+        item['video_uri'] = Path(item['video_path']).as_uri()
       except Exception:
         item['video_uri'] = ""
-        item['video_link'] = ""
     else:
       item['video_uri'] = ""
-      item['video_link'] = ""
 
   html = build_html(rows, excel_path)
 
@@ -434,12 +423,19 @@ def main():
       return Response('Forbidden', status=403)
     return send_file_partial(safe_path)
 
-  # show the generated HTML directly in the webview (no local HTTP server)
+  # start flask server on an ephemeral port in background
+  server = make_server('127.0.0.1', 0, app)
+  port = server.socket.getsockname()[1]
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+
+  base_url = f"http://127.0.0.1:{port}"
+
   try:
-    webview.create_window('Danh sach don hom nay', html=html, width=1200, height=760)
+    webview.create_window(base_url, url=base_url + '/', width=1200, height=760)
     webview.start()
   finally:
-    pass
+    server.shutdown()
 
 
 if __name__ == "__main__":
