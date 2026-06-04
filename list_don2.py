@@ -297,6 +297,10 @@ def build_html(rows, excel_path, base_url):
     let timerStart = null;
     let timerInterval = null;
 
+    // disable scanning until user presses Start
+    scanInput.disabled = true;
+    scanBtn.disabled = true;
+
     function formatSeconds(s) {
       if (s === null || s === undefined || isNaN(s)) return '';
       return (Math.round(s * 1000) / 1000) + 's';
@@ -312,6 +316,10 @@ def build_html(rows, excel_path, base_url):
         const elapsed = (Date.now() - timerStart) / 1000;
         timerDisplay.textContent = formatSeconds(elapsed);
       }, 200);
+        // enable scanning input when started
+        scanInput.disabled = false;
+        scanBtn.disabled = false;
+        scanInput.focus();
     }
 
     function stopTimer() {
@@ -321,6 +329,9 @@ def build_html(rows, excel_path, base_url):
       startBtn.disabled = false;
       stopBtn.disabled = true;
       timerStart = null;
+        // disable scanning after stop
+        scanInput.disabled = true;
+        scanBtn.disabled = true;
     }
 
     function playVideo(item) {
@@ -371,16 +382,20 @@ def build_html(rows, excel_path, base_url):
     }
 
     async function sendBarcode(barcode) {
-      try {
-        let elapsed = null;
-        if (timerStart) elapsed = (Date.now() - timerStart) / 1000;
-        const resp = await fetch('/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode, elapsed_seconds: elapsed }) });
-        if (resp.ok) {
-          scanInput.value = ''; scanInput.focus();
-          // do NOT stop or reset the timer here; timer keeps running until user presses Stop
-          await refreshData();
-        } else { alert('Lỗi khi gửi mã vạch'); }
-      } catch (e) { alert('Lỗi kết nối: ' + e.message); }
+            try {
+                if (!timerStart) {
+                    alert('Vui lòng nhấn Bắt đầu trước khi bắn mã vạch.');
+                    return;
+                }
+                let elapsed = null;
+                elapsed = (Date.now() - timerStart) / 1000;
+                const resp = await fetch('/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode, elapsed_seconds: elapsed }) });
+                if (resp.ok) {
+                    scanInput.value = ''; scanInput.focus();
+                    // do NOT stop or reset the timer here; timer keeps running until user presses Stop
+                    await refreshData();
+                } else { alert('Lỗi khi gửi mã vạch'); }
+            } catch (e) { alert('Lỗi kết nối: ' + e.message); }
     }
 
     scanBtn.addEventListener('click', () => { const v = scanInput.value.trim(); if (!v) return; sendBarcode(v); });
