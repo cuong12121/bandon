@@ -241,7 +241,8 @@ def build_html(rows, excel_path, base_url):
         <div class="scan-row">
           <input id="barcodeInput" class="scan-input" placeholder="Bắn mã vạch ở đây rồi Enter..." />
           <button class="btn" id="startBtn">Bắt đầu</button>
-          <button class="btn" id="stopBtn" disabled> Dừng </button>
+                    <button class="btn" id="stopBtn" disabled> Dừng </button>
+                    <button class="btn" id="endBtn"> Kết thúc </button>
           <span id="timerDisplay" style="align-self:center;margin-left:8px;color:var(--muted)">0.0s</span>
           <button class="btn" id="scanBtn">Bắn</button>
         </div>
@@ -292,6 +293,7 @@ def build_html(rows, excel_path, base_url):
     const scanBtn = document.getElementById('scanBtn');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const endBtn = document.getElementById('endBtn');
     const timerDisplay = document.getElementById('timerDisplay');
 
     let timerStart = null;
@@ -300,6 +302,8 @@ def build_html(rows, excel_path, base_url):
     // disable scanning until user presses Start
     scanInput.disabled = true;
     scanBtn.disabled = true;
+    // disable End until Start is pressed
+    endBtn.disabled = true;
 
     function formatSeconds(s) {
       if (s === null || s === undefined || isNaN(s)) return '';
@@ -312,6 +316,8 @@ def build_html(rows, excel_path, base_url):
       startBtn.textContent = 'Đang...';
       startBtn.disabled = true;
       stopBtn.disabled = false;
+            // allow End after starting
+            endBtn.disabled = false;
       timerInterval = setInterval(() => {
         const elapsed = (Date.now() - timerStart) / 1000;
         timerDisplay.textContent = formatSeconds(elapsed);
@@ -422,6 +428,25 @@ def build_html(rows, excel_path, base_url):
         console.error('Stop recording proxy failed', e);
       }
     });
+        endBtn.addEventListener('click', async () => {
+            if (!confirm('Bạn có chắc muốn cắt các đoạn video theo các stt người dùng hiện có không?')) return;
+            endBtn.disabled = true;
+            try {
+                const resp = await fetch('/cut_end', { method: 'POST' });
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    alert('Lỗi khi cắt video: ' + txt);
+                } else {
+                    const j = await resp.json();
+                    alert('Hoàn tất cắt ' + (j.files ? j.files.length : 0) + ' file.');
+                    await refreshData();
+                }
+            } catch (e) {
+                alert('Lỗi khi kết nối: ' + e.message);
+            } finally {
+                endBtn.disabled = false;
+            }
+        });
     renderTable();
   </script>
 </body>
@@ -524,9 +549,10 @@ def main():
         global recording
 
         if recording:
-            return
+            return None
 
         start_ffmpeg()
+        return current_video_path
 
     def stop_record():
         global ffmpeg_process, recording, current_video_path
@@ -544,7 +570,8 @@ def main():
 
         ffmpeg_process = None
         recording = False
-        current_video_path = None
+        # do not clear current_video_path here; let caller (rec_stop) attach it to Excel
+        return
     
 
 
@@ -574,6 +601,29 @@ def main():
         return files[0]
 
 
+    def find_video_from_excel():
+        """Return the most recent existing video path recorded in today's Excel (column 5), or None."""
+        excel_path = get_today_excel_path()
+        if not excel_path.exists():
+            return None
+        try:
+            wb = load_workbook(excel_path)
+            ws = wb.active
+            # iterate bottom->top to prefer latest entries
+            for r in range(ws.max_row, 1, -1):
+                val = ws.cell(row=r, column=5).value
+                if not val:
+                    continue
+                p = Path(str(val))
+                if not p.is_absolute():
+                    p = (BASE_DIR / p).resolve()
+                if p.exists():
+                    return p
+        except Exception:
+            return None
+        return None
+
+
     def attach_latest_video_to_last_row(video_path: Path):
         excel_path = get_today_excel_path()
         if not excel_path.exists():
@@ -591,8 +641,8 @@ def main():
     @app.route('/rec_start', methods=['POST'])
     def rec_start():
         try:
-            start_record()
-            return jsonify({'ok': True})
+            filename = start_record()
+            return jsonify({'ok': True, 'video': str(filename) if filename else None})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -608,8 +658,116 @@ def main():
         latest = find_latest_video_file()
         if latest:
             attached = attach_latest_video_to_last_row(latest)
+            try:
+                # clear the in-memory current_video_path after successful attach
+                global current_video_path
+                current_video_path = None
+            except Exception:
+                pass
             return jsonify({'ok': True, 'video': str(latest), 'attached': attached})
         return jsonify({'ok': True, 'video': None, 'attached': False})
+
+
+    @app.route('/cut_end', methods=['POST'])
+    def cut_end():
+        try:
+            # prefer explicit video path stored in Excel (column 5);
+            # fallback to latest file in today's folder
+            latest = find_video_from_excel() or find_latest_video_file()
+            if not latest:
+                return jsonify({'ok': False, 'error': 'No video found for today'}), 404
+
+            files = cut_segments_from_video(latest)
+            return jsonify({'ok': True, 'files': [str(p) for p in files]})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+    def cut_segments_from_video(video_path: Path):
+        """Cut the given full recording into per-user sequential segments and write paths back to Excel.
+
+        For each user, cuts are created in ascending `user_count` order. The first segment for a user
+        starts at 0.0 and ends at the user's first `elapsed_seconds`. Subsequent segments go from the
+        previous elapsed to the current elapsed. The generated files are saved to a `cuts` folder in
+        the same day directory as the original video and the path is written to column 5 of the Excel.
+        Returns a list of output Path objects.
+        """
+        excel_path = get_today_excel_path()
+        if not excel_path.exists():
+            raise Exception('Excel file for today not found')
+
+        wb = load_workbook(excel_path)
+        ws = wb.active
+
+        # collect rows that have a user and an elapsed_seconds value
+        rows = []
+        for r in range(2, ws.max_row + 1):
+            user = ws.cell(row=r, column=3).value
+            elapsed = ws.cell(row=r, column=6).value
+            if not user or elapsed is None:
+                continue
+            try:
+                elapsed_f = float(elapsed)
+            except Exception:
+                continue
+            try:
+                user_count_val = ws.cell(row=r, column=4).value
+                user_count_int = int(user_count_val) if user_count_val not in (None, '') else None
+            except Exception:
+                user_count_int = None
+
+            rows.append({'row': r, 'user': str(user), 'user_count': user_count_int, 'elapsed': elapsed_f})
+
+        if not rows:
+            return []
+
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for it in rows:
+            groups[it['user']].append(it)
+
+        output_files = []
+        nowstamp = datetime.now().strftime('%y%m%d%H%M%S')
+
+        for user, items in groups.items():
+            # sort by user_count if present, otherwise by elapsed
+            items.sort(key=lambda x: (x['user_count'] if x['user_count'] is not None else x['elapsed']))
+            prev = 0.0
+            for it in items:
+                start = float(prev)
+                end = float(it['elapsed'])
+                duration = end - start
+                if duration <= 0:
+                    prev = end
+                    continue
+
+                out_dir = video_path.parent / 'cuts'
+                out_dir.mkdir(parents=True, exist_ok=True)
+                safe_user = re.sub(r'[^A-Za-z0-9_-]', '_', it['user'])
+                uc = it['user_count'] if it['user_count'] is not None else 0
+                out_name = f"cut_{safe_user}_{uc}_{nowstamp}.mp4"
+                out_path = out_dir / out_name
+
+                # ffmpeg: seek to start, copy duration
+                cmd = [
+                    'ffmpeg', '-y', '-ss', str(start), '-i', str(video_path), '-t', str(duration), '-c', 'copy', str(out_path)
+                ]
+                try:
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                except Exception:
+                    # if direct copy fails, try a re-encode as a fallback
+                    cmd2 = [
+                        'ffmpeg', '-y', '-ss', str(start), '-i', str(video_path), '-t', str(duration), '-c:v', 'libx264', '-c:a', 'aac', str(out_path)
+                    ]
+                    subprocess.run(cmd2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                # write the path back to the excel (column 5)
+                ws.cell(row=it['row'], column=5, value=str(out_path))
+                output_files.append(out_path)
+                prev = end
+
+        wb.save(excel_path)
+        return output_files
 
 
     @app.route('/data')
