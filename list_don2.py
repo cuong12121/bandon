@@ -730,15 +730,30 @@ def main():
         nowstamp = datetime.now().strftime('%y%m%d%H%M%S')
 
         for user, items in groups.items():
-            # sort by user_count if present, otherwise by elapsed
-            items.sort(key=lambda x: (x['user_count'] if x['user_count'] is not None else x['elapsed']))
-            prev = 0.0
+            # sort by user_count descending (largest STT first). If user_count
+            # missing, treat as 0 and fall back to elapsed descending.
+            def sort_key(x):
+                uc = x.get('user_count')
+                try:
+                    ucv = int(uc) if uc is not None else 0
+                except Exception:
+                    ucv = 0
+                return (-ucv, -float(x['elapsed']))
+
+            items.sort(key=sort_key)
+
+            # The first (largest stt) cut starts at 0. Subsequent cuts start
+            # at the end time of the previous cut (prev_end) and end at the
+            # current row's elapsed. This creates non-overlapping sequential
+            # segments per the user's request.
+            prev_end = 0.0
             for it in items:
-                start = float(prev)
+                start = float(prev_end)
                 end = float(it['elapsed'])
                 duration = end - start
                 if duration <= 0:
-                    prev = end
+                    # advance prev_end to this elapsed even if no segment
+                    prev_end = end
                     continue
 
                 out_dir = video_path.parent / 'cuts'
