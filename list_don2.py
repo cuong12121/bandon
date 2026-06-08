@@ -22,6 +22,7 @@ import mimetypes
 import os
 import subprocess
 import webbrowser
+import shutil
 from flask import Flask, request, Response, send_file, jsonify
 from werkzeug.serving import make_server
 from define_config import VALID_DEFINES
@@ -238,14 +239,15 @@ def build_html(rows, excel_path, base_url):
 
     <div class="grid">
       <section class="card">
-        <div class="scan-row">
-          <input id="barcodeInput" class="scan-input" placeholder="Bắn mã vạch ở đây rồi Enter..." />
-          <button class="btn" id="startBtn">Bắt đầu</button>
-                    <button class="btn" id="stopBtn" disabled> Dừng </button>
-                    <button class="btn" id="endBtn"> Kết thúc </button>
-          <span id="timerDisplay" style="align-self:center;margin-left:8px;color:var(--muted)">0.0s</span>
-          <button class="btn" id="scanBtn">Bắn</button>
-        </div>
+                <div class="scan-row">
+                    <input id="barcodeInput" class="scan-input" placeholder="Bắn mã vạch ở đây rồi Enter..." />
+                    <button class="btn" id="startBtn">Bắt đầu</button>
+                                        <button class="btn" id="stopBtn" disabled> Dừng </button>
+                                        <button class="btn" id="endBtn"> Kết thúc </button>
+                                        <button class="btn" id="finalizeBtn"> Hoàn tất quy trình </button>
+                    <span id="timerDisplay" style="align-self:center;margin-left:8px;color:var(--muted)">0.0s</span>
+                    <button class="btn" id="scanBtn">Bắn</button>
+                </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -269,11 +271,15 @@ def build_html(rows, excel_path, base_url):
       </section>
 
       <section class="card">
-        <div class="video-box">
-          <h3 class="video-title">Xem video don</h3>
-          <p id="videoInfo">Chon mot don de xem video.</p>
-          <video id="player" controls></video>
-        </div>
+                <div class="video-box">
+                    <h3 class="video-title">Xem video don</h3>
+                    <p id="videoInfo">Chon mot don de xem video.</p>
+                    <video id="player" controls></video>
+                    <div style="margin-top:10px">
+                        <h4 style="margin:6px 0 8px;color:var(--accent)">Danh sách Excel hôm nay</h4>
+                        <div id="excelList" style="font-size:13px;color:var(--muted)">Đang tải...</div>
+                    </div>
+                </div>
       </section>
     </div>
   </div>
@@ -428,26 +434,63 @@ def build_html(rows, excel_path, base_url):
         console.error('Stop recording proxy failed', e);
       }
     });
-        endBtn.addEventListener('click', async () => {
-            if (!confirm('Bạn có chắc muốn cắt các đoạn video theo các stt người dùng hiện có không?')) return;
-            endBtn.disabled = true;
+                endBtn.addEventListener('click', async () => {
+                        if (!confirm('Bạn có chắc muốn cắt các đoạn video theo các stt người dùng hiện có không?')) return;
+                        endBtn.disabled = true;
+                        try {
+                                const resp = await fetch('/cut_end', { method: 'POST' });
+                                if (!resp.ok) {
+                                        const txt = await resp.text();
+                                        alert('Lỗi khi cắt video: ' + txt);
+                                } else {
+                                        const j = await resp.json();
+                                        alert('Hoàn tất cắt ' + (j.files ? j.files.length : 0) + ' file.');
+                                        await refreshData();
+                                }
+                        } catch (e) {
+                                alert('Lỗi khi kết nối: ' + e.message);
+                        } finally {
+                                endBtn.disabled = false;
+                        }
+                });
+
+        finalizeBtn.addEventListener('click', async () => {
+            if (!confirm('Bạn có chắc muốn hoàn tất quy trình và lưu file Excel phiên này không?')) return;
+            finalizeBtn.disabled = true;
             try {
-                const resp = await fetch('/cut_end', { method: 'POST' });
+                const resp = await fetch('/finalize', { method: 'POST' });
                 if (!resp.ok) {
                     const txt = await resp.text();
-                    alert('Lỗi khi cắt video: ' + txt);
+                    alert('Lỗi khi hoàn tất: ' + txt);
                 } else {
                     const j = await resp.json();
-                    alert('Hoàn tất cắt ' + (j.files ? j.files.length : 0) + ' file.');
-                    await refreshData();
+                    alert('Hoàn tất lưu: ' + (j.file ? j.file : 'Không có file mới'));
+                    await refreshExcelList();
                 }
             } catch (e) {
                 alert('Lỗi khi kết nối: ' + e.message);
             } finally {
-                endBtn.disabled = false;
+                finalizeBtn.disabled = false;
             }
         });
-    renderTable();
+
+        async function refreshExcelList() {
+            try {
+                const resp = await fetch('/excel_list');
+                if (!resp.ok) { document.getElementById('excelList').textContent = 'Không thể tải danh sách.'; return; }
+                const list = await resp.json();
+                const el = document.getElementById('excelList');
+                if (!list || list.length === 0) { el.innerHTML = '<div class="empty">Không có file Excel hôm nay.</div>'; return; }
+                el.innerHTML = '<ul style="margin:0;padding-left:18px">' + list.map(i => '<li><a href="' + i.url + '" target="_blank">' + i.name + '</a></li>').join('') + '</ul>';
+            } catch (e) {
+                document.getElementById('excelList').textContent = 'Lỗi tải: ' + e.message;
+            }
+        }
+
+        // initial load of excel list
+        refreshExcelList();
+
+        renderTable();
   </script>
 </body>
 </html>
@@ -783,6 +826,57 @@ def main():
 
         wb.save(excel_path)
         return output_files
+
+
+    @app.route('/finalize', methods=['POST'])
+    def finalize():
+        try:
+            src = get_today_excel_path()
+            if not src.exists():
+                return jsonify({'ok': False, 'error': 'Excel file for today not found'}), 404
+            d = src.parent
+            base = src.stem  # YYYYMMDD
+            # find existing numbered copies
+            nums = []
+            for p in d.glob(f"{base}*.xlsx"):
+                m = re.match(rf"{re.escape(base)}(?:_(\d+))?\.xlsx$", p.name)
+                if m:
+                    nums.append(int(m.group(1)) if m.group(1) else 0)
+            next_num = 1
+            if nums:
+                next_num = max(nums) + 1
+            dest = d / f"{base}_{next_num}.xlsx"
+            shutil.copy2(src, dest)
+            files = [p.name for p in sorted(d.glob(f"{base}*.xlsx"))]
+            return jsonify({'ok': True, 'file': dest.name, 'files': files})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+    @app.route('/excel_list')
+    def excel_list():
+        excel_path = get_today_excel_path()
+        d = excel_path.parent
+        if not d.exists():
+            return jsonify([])
+        files = [p.name for p in sorted(d.glob(f"{excel_path.stem}*.xlsx"))]
+        items = []
+        for name in files:
+            url = base_url + f"/excel/{urllib.parse.quote(name)}"
+            items.append({'name': name, 'url': url})
+        return jsonify(items)
+
+
+    @app.route('/excel/<path:filename>')
+    def excel(filename):
+        safe_path = (EXCEL_ROOT / filename).resolve()
+        try:
+            safe_path.relative_to(EXCEL_ROOT.resolve())
+        except Exception:
+            return Response('Forbidden', status=403)
+        if not safe_path.exists():
+            return Response('File not found', status=404)
+        return send_file(str(safe_path))
 
 
     @app.route('/data')
