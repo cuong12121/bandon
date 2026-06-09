@@ -834,6 +834,15 @@ def main():
             src = get_today_excel_path()
             if not src.exists():
                 return jsonify({'ok': False, 'error': 'Excel file for today not found'}), 404
+
+            # load workbook to validate that no close_time cells are empty
+            wb = load_workbook(src)
+            ws = wb.active
+            for r in range(2, ws.max_row + 1):
+                v = ws.cell(row=r, column=1).value
+                if v is None or str(v).strip() == '':
+                    return jsonify({'ok': False, 'error': 'Some close_time cells are empty; not saving copy'}), 400
+
             d = src.parent
             base = src.stem  # YYYYMMDD
             # find existing numbered copies
@@ -846,7 +855,13 @@ def main():
             if nums:
                 next_num = max(nums) + 1
             dest = d / f"{base}_{next_num}.xlsx"
-            shutil.copy2(src, dest)
+
+            # create a copy with the close_time column cleared (so original remains intact)
+            # we already have the workbook loaded from src; clear column 1 for data rows
+            for r in range(2, ws.max_row + 1):
+                ws.cell(row=r, column=1, value='')
+
+            wb.save(dest)
             files = [p.name for p in sorted(d.glob(f"{base}*.xlsx"))]
             return jsonify({'ok': True, 'file': dest.name, 'files': files})
         except Exception as e:
