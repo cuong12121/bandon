@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent
 EXCEL_ROOT = BASE_DIR / "excel"
 PAGE_SIZE = 20
 VIDEO_ROOT = BASE_DIR / "video"
-rtsp_url = "rtsp://admin:GJTMIL@192.168.1.91:554/ch1/main"
+from rtsp_config import rtsp_url
 ffmpeg_process = None
 recording = False
 current_video_path = None
