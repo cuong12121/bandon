@@ -164,13 +164,18 @@ def load_today_orders():
 
         resolved_video = resolve_video_path(video_raw)
         exists = resolved_video.exists()
+        # Skip rows that do not reference an existing video file
+        if not exists:
+            continue
+
         rows.append({
             "close_time": str(close_time),
             "barcode": str(barcode),
             "user": user_char,
             "user_count": '',
             "video_path": str(resolved_video),
-            "video_name": (latest_today_video.name if latest_today_video is not None else (resolved_video.name if exists else '')),
+            # only set video_name when the referenced file actually exists
+            "video_name": resolved_video.name,
             "elapsed": str(elapsed),
             "exists": exists,
             "sort_key": sort_key.isoformat(),
