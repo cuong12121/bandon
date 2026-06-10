@@ -141,8 +141,23 @@ def load_today_orders():
                 latest_today_video = vfiles[0]
     except Exception:
         latest_today_video = None
-    # Expect columns: close_time, barcode, user, user_count, video_path, elapsed_seconds
-    for r_idx, row_cells in enumerate(worksheet.iter_rows(min_row=2, max_col=6), start=2):
+    # determine header indexes so we can also read an optional 'cutvideo' column
+    header = [ (c.value or '').strip().lower() if isinstance(c.value, str) else (c.value or '') for c in worksheet[1] ]
+    # common defaults
+    video_col_idx = 5
+    cut_col_idx = None
+    try:
+        # look for header names (case-insensitive)
+        for i, h in enumerate(header, start=1):
+            if isinstance(h, str) and h.lower() == 'video_path':
+                video_col_idx = i
+            if isinstance(h, str) and h.lower() == 'cutvideo':
+                cut_col_idx = i
+    except Exception:
+        pass
+
+    # Expect columns at least up to video and elapsed: we'll iterate full rows and access by index
+    for r_idx, row_cells in enumerate(worksheet.iter_rows(min_row=2, max_col=worksheet.max_column), start=2):
         values = [c.value for c in row_cells]
         if not any(values):
             continue
@@ -158,15 +173,48 @@ def load_today_orders():
                 user_char = last
 
         # stored_user_count = values[3] if len(values) > 3 else None
-        video_raw = values[4] if len(values) > 4 and values[4] is not None else ""
-        elapsed = values[5] if len(values) > 5 and values[5] is not None else ""
+        # video_path column may be at a different index; default to column 5
+        video_raw = None
+        try:
+            video_raw = worksheet.cell(row=r_idx, column=video_col_idx).value
+        except Exception:
+            video_raw = values[4] if len(values) > 4 and values[4] is not None else ""
+
+        elapsed = None
+        try:
+            elapsed = worksheet.cell(row=r_idx, column=6).value
+        except Exception:
+            elapsed = values[5] if len(values) > 5 and values[5] is not None else ""
+
+        # optional cutvideo column
+        cut_raw = ''
+        if cut_col_idx is not None:
+            try:
+                cut_raw = worksheet.cell(row=r_idx, column=cut_col_idx).value or ''
+            except Exception:
+                cut_raw = ''
         sort_key = parse_close_time(close_time)
 
         resolved_video = resolve_video_path(video_raw)
         exists = resolved_video.exists()
+
         # Skip rows that do not reference an existing video file
         if not exists:
             continue
+
+        # resolve cutvideo if present
+        cutvideo_path = ''
+        cut_exists = False
+        cutvideo_name = ''
+        if cut_raw:
+            try:
+                resolved_cut = resolve_video_path(cut_raw)
+                if resolved_cut.exists():
+                    cutvideo_path = str(resolved_cut)
+                    cut_exists = True
+                    cutvideo_name = resolved_cut.name
+            except Exception:
+                cutvideo_path = ''
 
         rows.append({
             "close_time": str(close_time),
@@ -176,6 +224,9 @@ def load_today_orders():
             "video_path": str(resolved_video),
             # only set video_name when the referenced file actually exists
             "video_name": resolved_video.name,
+            "cutvideo": cutvideo_path,
+            "cut_exists": cut_exists,
+            "cutvideo_name": cutvideo_name,
             "elapsed": str(elapsed),
             "exists": exists,
             "sort_key": sort_key.isoformat(),
@@ -362,6 +413,7 @@ def build_html(rows, excel_path, base_url):
                                                                     <th>Thời gian đếm</th>
                                                                     <th>Tên video</th>
                                                                     <th>Video</th>
+                                                                    <th>Cut video</th>
                                                                 </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -466,6 +518,20 @@ def build_html(rows, excel_path, base_url):
       info.textContent = item.video_path;
     }
 
+        function playCut(item) {
+            var url = item.cutvideo_uri || item.cutvideo || '';
+            if (!url) {
+                info.textContent = 'Khong tim thay file cut.';
+                return;
+            }
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.open_in_browser) {
+                window.pywebview.api.open_in_browser(url);
+            } else {
+                window.open(url, '_blank');
+            }
+            info.textContent = item.cutvideo || item.cutvideo_name || '';
+        }
+
         function selectRow(i) {
             selectedIndex = i;
             renderTable();
@@ -506,9 +572,10 @@ def build_html(rows, excel_path, base_url):
                 const actualIndex = start + index;
                 const disabled = item.exists ? '' : 'disabled';
                 const selectedClass = (actualIndex === selectedIndex) ? 'selected' : '';
-                    const cutBtn = '<button class="btn" ' + disabled + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
-                    const viewBtn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                                                                    return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '</tr>';
+                            const cutBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
+                            const viewBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
+                            const viewCutBtn = '<button class="btn" ' + (item.cut_exists ? '' : 'disabled') + ' onclick="playCut(data[' + actualIndex + '])">Xem Cut</button>';
+                                                                            return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '<td>' + (item.cutvideo_name || item.cutvideo || '') + ' ' + viewCutBtn + '</td>' + '</tr>';
             }).join('');
                         renderRowActions();
     }
@@ -719,6 +786,21 @@ def main():
                         item['video_uri'] = ""
             else:
                 item['video_uri'] = ""
+
+            # prepare cutvideo URI if present and exists
+            if item.get('cutvideo'):
+                try:
+                    p2 = Path(item['cutvideo'])
+                    rel2 = p2.relative_to(VIDEO_ROOT)
+                    quoted2 = "/".join(urllib.parse.quote(part) for part in rel2.parts)
+                    item['cutvideo_uri'] = base_url + f"/video/{quoted2}"
+                except Exception:
+                    try:
+                        item['cutvideo_uri'] = Path(item['cutvideo']).as_uri()
+                    except Exception:
+                        item['cutvideo_uri'] = ""
+            else:
+                item['cutvideo_uri'] = ""
 
         html = build_html(rows, excel_path, base_url)
         return html
@@ -1211,6 +1293,20 @@ def main():
                         item['video_uri'] = ""
             else:
                 item['video_uri'] = ""
+            # cutvideo uri
+            if item.get('cutvideo'):
+                try:
+                    p2 = Path(item['cutvideo'])
+                    rel2 = p2.relative_to(VIDEO_ROOT)
+                    quoted2 = "/".join(urllib.parse.quote(part) for part in rel2.parts)
+                    item['cutvideo_uri'] = base_url + f"/video/{quoted2}"
+                except Exception:
+                    try:
+                        item['cutvideo_uri'] = Path(item['cutvideo']).as_uri()
+                    except Exception:
+                        item['cutvideo_uri'] = ""
+            else:
+                item['cutvideo_uri'] = ""
         return jsonify(rows)
 
 
