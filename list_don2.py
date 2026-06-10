@@ -290,6 +290,7 @@ def build_html(rows, excel_path, base_url):
                                     <th>Người dùng</th>
                                     <th>STT</th>
                                     <th>Thời gian bắt đầu</th>
+                                    <th>Tên video</th>
                                     <th>Thời gian đếm</th>
                                     <th>Video</th>
                                 </tr>
@@ -396,7 +397,7 @@ def build_html(rows, excel_path, base_url):
 
     function renderTable() {
             if (data.length === 0) {
-                                rowsEl.innerHTML = '<tr><td colspan="7" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                                rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -416,7 +417,7 @@ def build_html(rows, excel_path, base_url):
         const actualIndex = start + index;
         const disabled = item.exists ? '' : 'disabled';
         const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
       }).join('');
     }
 
