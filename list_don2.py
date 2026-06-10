@@ -251,7 +251,7 @@ def build_html(rows, excel_path, base_url):
     # Use a template with placeholders to avoid f-string brace interpolation issues
     # dump JSON and escape closing script tag to avoid breaking the surrounding <script>
     data_json = json.dumps(rows, ensure_ascii=False)
-    data_json = data_json.replace('</script>', '<\/script>')
+    data_json = data_json.replace('</script>', '<\\/script>')
     template = """
 <!doctype html>
 <html>
