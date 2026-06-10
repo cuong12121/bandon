@@ -95,6 +95,17 @@ def load_today_orders():
     worksheet = workbook.active
 
     rows = []
+    # determine today's latest recorded video (if any) so we can show its name for all rows
+    latest_today_video = None
+    try:
+        today_dir = build_daily_dir(VIDEO_ROOT, datetime.now())
+        if today_dir.exists():
+            vfiles = list(today_dir.glob('**/*.mp4'))
+            if vfiles:
+                vfiles.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                latest_today_video = vfiles[0]
+    except Exception:
+        latest_today_video = None
     # Expect columns: close_time, barcode, user, user_count, video_path, elapsed_seconds
     for r_idx, row_cells in enumerate(worksheet.iter_rows(min_row=2, max_col=6), start=2):
         values = [c.value for c in row_cells]
@@ -124,7 +135,7 @@ def load_today_orders():
             "user": user_char,
             "user_count": '',
             "video_path": str(resolved_video),
-            "video_name": resolved_video.name if exists else '',
+            "video_name": (latest_today_video.name if latest_today_video is not None else (resolved_video.name if exists else '')),
             "elapsed": str(elapsed),
             "exists": exists,
             "sort_key": sort_key.isoformat(),
