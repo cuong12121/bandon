@@ -89,7 +89,9 @@ def parse_close_time(value):
 
 def load_today_orders():
     excel_path = get_today_excel_path()
+    print(f"[DEBUG] load_today_orders: looking for excel at {excel_path}")
     if not excel_path.exists():
+        print(f"[DEBUG] load_today_orders: excel not found: {excel_path}")
         return [], excel_path
 
     # load workbook for reading and possible updating user_count
@@ -203,6 +205,13 @@ def load_today_orders():
         item.pop("sort_key", None)
         # keep row_idx so client can reference the Excel row for updates
 
+    print(f"[DEBUG] load_today_orders: loaded {len(rows)} rows from {excel_path}")
+    if len(rows) > 0:
+        sample = rows[:5]
+        try:
+            print(f"[DEBUG] sample rows: {json.dumps(sample, default=str) }")
+        except Exception:
+            pass
     return rows, excel_path
 
 
@@ -337,6 +346,7 @@ def build_html(rows, excel_path, base_url):
 
   <script>
     let data = %%DATA_JSON%%;
+        console.log('Loaded data from server (embedded):', (data && data.length) ? data.length : 0, data && data.slice ? data.slice(0,5) : data);
     const pageSize = %%PAGE_SIZE%%;
     let currentPage = 1;
     let selectedIndex = null;
@@ -1123,6 +1133,7 @@ def main():
     @app.route('/data')
     def data_api():
         rows, _ = load_today_orders()
+        print(f"[DEBUG] /data returning {len(rows)} rows")
         for item in rows:
             if item.get('exists'):
                 try:
