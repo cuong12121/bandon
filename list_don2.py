@@ -564,9 +564,25 @@ def build_html(rows, excel_path, base_url):
         async function cutManual(index) {
             const item = data[index];
             if (!item) { alert('Không tìm thấy mục'); return; }
-            if (!confirm('Cắt đoạn cho mã: ' + (item.barcode || '') + '?')) return;
             const payload = { row: item.row_idx, video_path: item.video_path, start: item.start_time || 0, end: item.elapsed || 0, barcode: item.barcode };
             try {
+                // request a preview of the cut command from server
+                let cmdText = '';
+                try {
+                    const pre = await fetch('/preview_cut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (pre.ok) {
+                        const pj = await pre.json();
+                        cmdText = pj.cmd || '';
+                    } else {
+                        const txt = await pre.text();
+                        cmdText = 'Preview error: ' + txt;
+                    }
+                } catch (err) {
+                    cmdText = 'Preview failed: ' + (err.message || err);
+                }
+
+                if (!confirm('Cắt đoạn cho mã: ' + (item.barcode || '') + '?\n\nLệnh sẽ chạy:\n' + cmdText)) return;
+
                 const resp = await fetch('/cut_manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const j = await resp.json();
                 if (!resp.ok) {
