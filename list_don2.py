@@ -835,12 +835,24 @@ def main():
             return False
         wb = load_workbook(excel_path)
         ws = wb.active
-        # find last row (append style)
-        last = ws.max_row
-        # video_path is column 5 now (1-based): close_time, barcode, user, user_count, video_path, elapsed_seconds
-        ws.cell(row=last, column=5, value=str(video_path))
-        wb.save(excel_path)
-        return True
+        # write the given video_path into column 5 for all data rows (row 2..max_row)
+        updated = 0
+        for r in range(2, ws.max_row + 1):
+            try:
+                ws.cell(row=r, column=5, value=str(video_path))
+                updated += 1
+            except Exception:
+                continue
+
+        try:
+            # try to save using the robust saver (handles locked Excel by creating a copy)
+            saved_path = save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+            # if saved to a different path, log and still return the count
+        except PermissionError:
+            # failed to save after retries/copy
+            return 0
+
+        return updated
 
 
     @app.route('/rec_start', methods=['POST'])
@@ -862,15 +874,15 @@ def main():
         # after stopping, find latest video and attach
         latest = find_latest_video_file()
         if latest:
-            attached = attach_latest_video_to_last_row(latest)
+            attached_count = attach_latest_video_to_last_row(latest)
             try:
                 # clear the in-memory current_video_path after successful attach
                 global current_video_path
                 current_video_path = None
             except Exception:
                 pass
-            return jsonify({'ok': True, 'video': str(latest), 'attached': attached})
-        return jsonify({'ok': True, 'video': None, 'attached': False})
+            return jsonify({'ok': True, 'video': str(latest), 'attached_count': attached_count})
+        return jsonify({'ok': True, 'video': None, 'attached_count': 0})
 
 
     @app.route('/cut_end', methods=['POST'])
