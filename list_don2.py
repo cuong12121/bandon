@@ -245,19 +245,22 @@ def build_html(rows, excel_path, base_url):
 <head>
   <meta charset="utf-8" />
   <title>Danh sach don hom nay</title>
-  <style>
+    <style>
     :root {--bg: #f4efe4;--surface: #fff8ee;--ink: #1f2328;--muted: #5f676f;--accent: #005f73;--accent-2: #ee9b00;--line: #d9cbb0;}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; color: var(--ink); background: radial-gradient(circle at 15% 10%, #fff5dd 0%, var(--bg) 45%); min-height: 100vh; }
-    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px 24px; }
+    .wrap { max-width: 1400px; margin: 24px auto; padding: 0 16px 24px; }
     .head { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
     .title { margin: 0; font-size: 24px; color: var(--accent); }
     .meta { margin-top: 6px; color: var(--muted); font-size: 13px; word-break: break-all; }
     .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
     @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .8fr; } }
     .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: 0 8px 20px rgba(31, 35, 40, 0.06); }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+    th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* narrow the final Video column (button) and limit video name width */
+    table th:nth-child(8), table td:nth-child(8) { width: 90px; max-width: 90px; text-align: center; }
+    table th:nth-child(7), table td:nth-child(7) { width: 260px; max-width: 260px; }
     th { color: var(--accent); font-weight: 700; background: #fff2dc; position: sticky; top: 0; }
     .table-wrap { max-height: 66vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
     .btn { border: 0; border-radius: 8px; padding: 7px 10px; background: var(--accent); color: #fff; cursor: pointer; font-weight: 600; }
@@ -301,8 +304,8 @@ def build_html(rows, excel_path, base_url):
                                     <th>Người dùng</th>
                                     <th>STT</th>
                                     <th>Thời gian bắt đầu</th>
-                                    <th>Tên video</th>
                                     <th>Thời gian đếm</th>
+                                    <th>Tên video</th>
                                     <th>Video</th>
                                 </tr>
             </thead>
@@ -428,7 +431,7 @@ def build_html(rows, excel_path, base_url):
         const actualIndex = start + index;
         const disabled = item.exists ? '' : 'disabled';
         const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                                                                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
       }).join('');
     }
 
