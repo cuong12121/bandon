@@ -64,21 +64,31 @@ def get_today_excel_path():
 def save_workbook_with_retry(workbook, path, retries=3, delay=0.5):
     """Try to save `workbook` to `path` with retries on PermissionError.
 
-    Returns True on success, raises the last exception on failure.
+    On success returns the path (as a Path) where the workbook was saved.
+    If the target is locked, attempts to save a copy with suffix `_copy_<ts>.xlsx`
+    and returns that path. Raises other exceptions on failure.
     """
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
             workbook.save(path)
-            return True
+            return Path(path)
         except PermissionError as e:
             last_exc = e
             time.sleep(delay)
         except Exception:
             # non-permission errors should surface immediately
             raise
-    # if we exit loop, raise informative PermissionError
-    raise PermissionError(f"Failed to save {path} after {retries} attempts: {last_exc}")
+
+    # retries exhausted — try saving to an alternate copy name in same folder
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    p = Path(path)
+    copy_path = p.with_name(f"{p.stem}_copy_{ts}{p.suffix}")
+    try:
+        workbook.save(copy_path)
+        return copy_path
+    except Exception as e:
+        raise PermissionError(f"Failed to save {path} after {retries} attempts: {last_exc}; copy failed: {e}")
 
 
 def resolve_video_path(raw_path):
@@ -245,7 +255,9 @@ def append_order(barcode_value, elapsed_seconds=None):
         ws = wb.active
         ws.append(["close_time", "barcode", "user", "user_count", "video_path", "elapsed_seconds"])
         try:
-            save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+            saved_path = save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+            if str(saved_path) != str(excel_path):
+                raise Exception(f'failed saving excel to target (file locked) — saved copy: {saved_path}')
         except PermissionError as pe:
             raise Exception(f'failed saving excel (permission denied): {pe}')
 
@@ -624,7 +636,9 @@ def build_html(rows, excel_path, base_url):
                 if (!resp.ok) {
                     alert('Lỗi cắt: ' + (j.error || 'Unknown'));
                 } else {
-                    alert('Cắt xong: ' + (j.file || ''));
+                    let msg = 'Cắt xong: ' + (j.file || '');
+                    if (j.excel_copy) msg += '\nExcel saved as copy: ' + j.excel_copy;
+                    alert(msg);
                     await refreshData();
                 }
             } catch (e) { alert('Lỗi kết nối: ' + e.message); }
@@ -938,9 +952,12 @@ def main():
                 target_row = int(row)
                 ws.cell(row=target_row, column=cut_col, value=str(out_path))
                 try:
-                    save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+                    saved_path = save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
                 except PermissionError as pe:
                     return jsonify({'ok': False, 'error': f'failed writing excel (permission denied): {pe}'}), 500
+                # if saved to a different path, include it in response
+                if str(saved_path) != str(excel_path):
+                    return jsonify({'ok': True, 'file': str(out_path), 'excel_copy': str(saved_path)})
             except Exception as e:
                 return jsonify({'ok': False, 'error': 'failed writing excel: ' + str(e)}), 500
 
