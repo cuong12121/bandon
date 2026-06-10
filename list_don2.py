@@ -637,7 +637,7 @@ def build_html(rows, excel_path, base_url):
                     alert('Lỗi cắt: ' + (j.error || 'Unknown'));
                 } else {
                     let msg = 'Cắt xong: ' + (j.file || '');
-                    if (j.excel_copy) msg += '\nExcel saved as copy: ' + j.excel_copy;
+                    if (j.excel_copy) msg += '\\nExcel saved as copy: ' + j.excel_copy;
                     alert(msg);
                     await refreshData();
                 }
