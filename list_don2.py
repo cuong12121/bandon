@@ -9,6 +9,7 @@ import urllib.parse
 import re
 import mimetypes
 import os
+import sys
 import json
 from datetime import datetime
 from pathlib import Path
@@ -199,7 +200,7 @@ def load_today_orders():
 
     for item in rows:
         item.pop("sort_key", None)
-        item.pop("row_idx", None)
+        # keep row_idx so client can reference the Excel row for updates
 
     return rows, excel_path
 
@@ -451,8 +452,9 @@ def build_html(rows, excel_path, base_url):
                 const actualIndex = start + index;
                 const disabled = item.exists ? '' : 'disabled';
                 const selectedClass = (actualIndex === selectedIndex) ? 'selected' : '';
-                const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                                                                return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                    const cutBtn = '<button class="btn" ' + disabled + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
+                    const viewBtn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
+                                                                    return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '</tr>';
             }).join('');
                         renderRowActions();
     }
@@ -556,6 +558,23 @@ def build_html(rows, excel_path, base_url):
             } catch (e) {
                 document.getElementById('excelList').textContent = 'Lỗi tải: ' + e.message;
             }
+        }
+
+        async function cutManual(index) {
+            const item = data[index];
+            if (!item) { alert('Không tìm thấy mục'); return; }
+            if (!confirm('Cắt đoạn cho mã: ' + (item.barcode || '') + '?')) return;
+            const payload = { row: item.row_idx, video_path: item.video_path, start: item.start_time || 0, end: item.elapsed || 0, barcode: item.barcode };
+            try {
+                const resp = await fetch('/cut_manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const j = await resp.json();
+                if (!resp.ok) {
+                    alert('Lỗi cắt: ' + (j.error || 'Unknown'));
+                } else {
+                    alert('Cắt xong: ' + (j.file || ''));
+                    await refreshData();
+                }
+            } catch (e) { alert('Lỗi kết nối: ' + e.message); }
         }
 
         // initial load of excel list
@@ -793,6 +812,78 @@ def main():
 
             files = cut_segments_from_video(latest)
             return jsonify({'ok': True, 'files': [str(p) for p in files]})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+    @app.route('/cut_manual', methods=['POST'])
+    def cut_manual():
+        try:
+            data = request.get_json(force=True)
+            # expect: row (excel row index), video_path, start, end, barcode
+            row = data.get('row')
+            video_path = data.get('video_path')
+            start = data.get('start')
+            end = data.get('end')
+            barcode = data.get('barcode')
+
+            if not video_path or start is None or end is None or row is None:
+                return jsonify({'ok': False, 'error': 'missing parameters'}), 400
+
+            try:
+                start_f = float(start)
+                end_f = float(end)
+            except Exception:
+                return jsonify({'ok': False, 'error': 'invalid start/end'}), 400
+
+            inp = Path(str(video_path))
+            if not inp.is_absolute():
+                inp = (BASE_DIR / inp).resolve()
+            if not inp.exists():
+                return jsonify({'ok': False, 'error': 'video file not found'}), 404
+
+            # build output name: barcode without last char + _timestamp.mp4
+            code = str(barcode or '')
+            base_name = code[:-1] if len(code) > 0 else 'cut'
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            out_name = f"{base_name}_{ts}.mp4"
+            out_dir = inp.parent
+            out_path = out_dir / out_name
+
+            # call cutvideo.py
+            cutter = Path(__file__).resolve().parent / 'cutvideo.py'
+            cmd = [sys.executable, str(cutter), str(inp), str(start_f), str(end_f), str(out_path)]
+            try:
+                subprocess.run(cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                return jsonify({'ok': False, 'error': f'cut failed: {e}'}), 500
+
+            # write output path to Excel under header 'cutvideo' (create column if needed)
+            excel_path = get_today_excel_path()
+            if not excel_path.exists():
+                return jsonify({'ok': False, 'error': 'excel not found'}), 404
+
+            wb = load_workbook(excel_path)
+            ws = wb.active
+            # find or create 'cutvideo' header
+            cut_col = None
+            for c in range(1, ws.max_column + 1):
+                h = ws.cell(row=1, column=c).value
+                if isinstance(h, str) and h.strip().lower() == 'cutvideo':
+                    cut_col = c
+                    break
+            if cut_col is None:
+                cut_col = ws.max_column + 1
+                ws.cell(row=1, column=cut_col, value='cutvideo')
+
+            try:
+                target_row = int(row)
+                ws.cell(row=target_row, column=cut_col, value=str(out_path))
+                wb.save(excel_path)
+            except Exception as e:
+                return jsonify({'ok': False, 'error': 'failed writing excel: ' + str(e)}), 500
+
+            return jsonify({'ok': True, 'file': str(out_path)})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
