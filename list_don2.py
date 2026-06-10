@@ -593,7 +593,7 @@ def build_html(rows, excel_path, base_url):
                     cmdText = 'Preview failed: ' + (err.message || err);
                 }
 
-                if (!confirm('Cắt đoạn cho mã: ' + (item.barcode || '') + '?\n\nLệnh sẽ chạy:\n' + cmdText)) return;
+                if (!confirm(`Cắt đoạn cho mã: ${item.barcode || ''}?\n\nLệnh sẽ chạy:\n${cmdText}`)) return;
 
                 const resp = await fetch('/cut_manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const j = await resp.json();
