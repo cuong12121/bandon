@@ -575,7 +575,7 @@ def build_html(rows, excel_path, base_url):
                             const cutBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
                             const viewBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
                             const viewCutBtn = '<button class="btn" ' + (item.cut_exists ? '' : 'disabled') + ' onclick="playCut(data[' + actualIndex + '])">Xem Cut</button>';
-                                                                            return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '<td>' + (item.cutvideo_name || item.cutvideo || '') + ' ' + viewCutBtn + '</td>' + '</tr>';
+                                                                            return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '<td>' + (item.cut_exists ? viewCutBtn : '') + '</td>' + '</tr>';
             }).join('');
                         renderRowActions();
     }
