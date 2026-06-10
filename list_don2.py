@@ -10,6 +10,7 @@ import re
 import mimetypes
 import os
 import sys
+import shlex
 import json
 from datetime import datetime
 from pathlib import Path
@@ -853,6 +854,11 @@ def main():
             # call cutvideo.py
             cutter = Path(__file__).resolve().parent / 'cutvideo.py'
             cmd = [sys.executable, str(cutter), str(inp), str(start_f), str(end_f), str(out_path)]
+            # log the command for inspection
+            try:
+                print('Running cut command:', ' '.join(map(str, cmd)))
+            except Exception:
+                pass
             try:
                 subprocess.run(cmd, check=True)
             except subprocess.CalledProcessError as e:
@@ -884,6 +890,48 @@ def main():
                 return jsonify({'ok': False, 'error': 'failed writing excel: ' + str(e)}), 500
 
             return jsonify({'ok': True, 'file': str(out_path)})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+    @app.route('/preview_cut', methods=['POST'])
+    def preview_cut():
+        try:
+            data = request.get_json(force=True)
+            row = data.get('row')
+            video_path = data.get('video_path')
+            start = data.get('start')
+            end = data.get('end')
+            barcode = data.get('barcode')
+
+            if not video_path or start is None or end is None or row is None:
+                return jsonify({'ok': False, 'error': 'missing parameters'}), 400
+
+            try:
+                start_f = float(start)
+                end_f = float(end)
+            except Exception:
+                return jsonify({'ok': False, 'error': 'invalid start/end'}), 400
+
+            inp = Path(str(video_path))
+            if not inp.is_absolute():
+                inp = (BASE_DIR / inp).resolve()
+            if not inp.exists():
+                return jsonify({'ok': False, 'error': 'video file not found'}), 404
+
+            # build output name as in cut_manual
+            code = str(barcode or '')
+            base_name = code[:-1] if len(code) > 0 else 'cut'
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            out_name = f"{base_name}_{ts}.mp4"
+            out_dir = inp.parent
+            out_path = out_dir / out_name
+
+            cutter = Path(__file__).resolve().parent / 'cutvideo.py'
+            cmd = [sys.executable, str(cutter), str(inp), str(start_f), str(end_f), str(out_path)]
+            # return a readable command string for confirmation
+            cmd_str = ' '.join([shlex.quote(str(p)) for p in cmd]) if 'shlex' in globals() else ' '.join(map(str, cmd))
+            return jsonify({'ok': True, 'cmd': cmd_str})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
