@@ -143,6 +143,38 @@ def load_today_orders():
         else:
             item['user_count'] = ''
 
+    # compute start_time per user group: for each user, the largest `user_count` entry
+    # is considered the first segment and starts at 0. Subsequent segments start at
+    # the previous segment's end (previous elapsed). Store as string seconds.
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for item in rows:
+        u = item.get('user') or ''
+        if not u:
+            continue
+        # parse user_count and elapsed if possible
+        try:
+            uc = int(item.get('user_count')) if (item.get('user_count') not in (None, '')) else None
+        except Exception:
+            uc = None
+        try:
+            elapsed_f = float(item.get('elapsed')) if (item.get('elapsed') not in (None, '')) else None
+        except Exception:
+            elapsed_f = None
+        groups[u].append({'item': item, 'user_count': uc, 'elapsed': elapsed_f})
+
+    for u, lst in groups.items():
+        # sort by user_count desc (largest STT first), fallback to elapsed desc
+        lst.sort(key=lambda x: (-(int(x['user_count']) if x['user_count'] is not None else 0), -(float(x['elapsed']) if x['elapsed'] is not None else 0)))
+        prev_end = 0.0
+        for rec in lst:
+            it = rec['item']
+            if rec['elapsed'] is None:
+                it['start_time'] = ''
+                continue
+            it['start_time'] = str(prev_end)
+            prev_end = float(rec['elapsed'])
+
     # write back user_count to worksheet (column 4)
     try:
         for item in rows:
@@ -256,6 +288,7 @@ def build_html(rows, excel_path, base_url):
                                     <th>Ma vach</th>
                                     <th>Người dùng</th>
                                     <th>STT</th>
+                                    <th>Thời gian bắt đầu</th>
                                     <th>Thời gian đếm</th>
                                     <th>Video</th>
                                 </tr>
@@ -362,7 +395,7 @@ def build_html(rows, excel_path, base_url):
 
     function renderTable() {
             if (data.length === 0) {
-                rowsEl.innerHTML = '<tr><td colspan="6" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                                rowsEl.innerHTML = '<tr><td colspan="7" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -382,7 +415,7 @@ def build_html(rows, excel_path, base_url):
         const actualIndex = start + index;
         const disabled = item.exists ? '' : 'disabled';
         const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
+                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
       }).join('');
     }
 
