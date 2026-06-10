@@ -258,11 +258,11 @@ def build_html(rows, excel_path, base_url):
     .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: 0 8px 20px rgba(31, 35, 40, 0.06); }
     table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
     th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* narrow the final Video column (button) and limit video name width */
-    table th:nth-child(8), table td:nth-child(8) { width: 90px; max-width: 90px; text-align: center; }
+    /* limit video name width */
     table th:nth-child(7), table td:nth-child(7) { width: 260px; max-width: 260px; }
+    tr.selected { background: rgba(0,95,115,0.06); }
     th { color: var(--accent); font-weight: 700; background: #fff2dc; position: sticky; top: 0; }
-    .table-wrap { max-height: 66vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .table-wrap { max-height: 80vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
     .btn { border: 0; border-radius: 8px; padding: 7px 10px; background: var(--accent); color: #fff; cursor: pointer; font-weight: 600; }
     .btn:disabled { background: #8a8f95; cursor: not-allowed; }
     .pager { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
@@ -295,23 +295,23 @@ def build_html(rows, excel_path, base_url):
                     <span id="timerDisplay" style="align-self:center;margin-left:8px;color:var(--muted)">0.0s</span>
                     <button class="btn" id="scanBtn">Bắn</button>
                 </div>
-        <div class="table-wrap">
+                <div class="table-wrap">
           <table>
             <thead>
-                                <tr>
-                                    <th>Thoi gian dong</th>
-                                    <th>Ma vach</th>
-                                    <th>Người dùng</th>
-                                    <th>STT</th>
-                                    <th>Thời gian bắt đầu</th>
-                                    <th>Thời gian đếm</th>
-                                    <th>Tên video</th>
-                                    <th>Video</th>
-                                </tr>
+                                                                <tr>
+                                                                        <th>Thoi gian dong</th>
+                                                                        <th>Ma vach</th>
+                                                                        <th>Người dùng</th>
+                                                                        <th>STT</th>
+                                                                        <th>Thời gian bắt đầu</th>
+                                                                        <th>Thời gian đếm</th>
+                                                                        <th>Tên video</th>
+                                                                </tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
-        </div>
+                </div>
+                <div id="rowActions" style="margin:10px 0"></div>
         <div class="pager">
           <button class="btn" id="prevBtn" onclick="prevPage()">Trang truoc</button>
           <button class="btn" id="nextBtn" onclick="nextPage()">Trang sau</button>
@@ -337,10 +337,12 @@ def build_html(rows, excel_path, base_url):
     let data = %%DATA_JSON%%;
     const pageSize = %%PAGE_SIZE%%;
     let currentPage = 1;
+    let selectedIndex = null;
     const rowsEl = document.getElementById('rows');
     const countEl = document.getElementById('count');
     const player = document.getElementById('player');
     const info = document.getElementById('videoInfo');
+    const rowActionsEl = document.getElementById('rowActions');
     const pageInfoEl = document.getElementById('pageInfo');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
@@ -409,9 +411,27 @@ def build_html(rows, excel_path, base_url):
       info.textContent = item.video_path;
     }
 
+        function selectRow(i) {
+            selectedIndex = i;
+            renderTable();
+            renderRowActions();
+        }
+
+        function renderRowActions() {
+            if (!rowActionsEl) return;
+            if (selectedIndex === null || typeof data[selectedIndex] === 'undefined') {
+                rowActionsEl.innerHTML = '';
+                return;
+            }
+            const item = data[selectedIndex];
+            const disabled = item.exists ? '' : 'disabled';
+            const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + selectedIndex + '])">Xem</button>';
+            rowActionsEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px">' + btn + '<div style="color:var(--muted)">' + (item.video_name || item.video_path || '') + '</div></div>';
+        }
+
     function renderTable() {
             if (data.length === 0) {
-                                rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                                rowsEl.innerHTML = '<tr><td colspan="7" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -427,12 +447,13 @@ def build_html(rows, excel_path, base_url):
       pageInfoEl.textContent = 'Trang ' + currentPage + '/' + totalPages;
       prevBtn.disabled = currentPage <= 1;
       nextBtn.disabled = currentPage >= totalPages;
-            rowsEl.innerHTML = pageRows.map((item, index) => {
-        const actualIndex = start + index;
-        const disabled = item.exists ? '' : 'disabled';
-        const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                                                                return '<tr>' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
-      }).join('');
+                        rowsEl.innerHTML = pageRows.map((item, index) => {
+                const actualIndex = start + index;
+                const disabled = item.exists ? '' : 'disabled';
+                const selectedClass = (actualIndex === selectedIndex) ? 'selected' : '';
+                                                                return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '</tr>';
+            }).join('');
+                        renderRowActions();
     }
 
     function nextPage() { const totalPages = Math.ceil(data.length / pageSize); if (currentPage < totalPages) { currentPage += 1; renderTable(); } }
