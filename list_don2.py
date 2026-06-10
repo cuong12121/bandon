@@ -253,13 +253,14 @@ def build_html(rows, excel_path, base_url):
     .head { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
     .title { margin: 0; font-size: 24px; color: var(--accent); }
     .meta { margin-top: 6px; color: var(--muted); font-size: 13px; word-break: break-all; }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
-    @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .8fr; } }
+    .grid { display: block; gap: 14px; }
+    @media (min-width: 980px) { .grid { grid-template-columns: 1fr; } }
     .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: 0 8px 20px rgba(31, 35, 40, 0.06); }
     table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
     th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* limit video name width */
+    /* limit video name width and narrow the final Video column */
     table th:nth-child(7), table td:nth-child(7) { width: 260px; max-width: 260px; }
+    table th:nth-child(8), table td:nth-child(8) { width: 90px; max-width: 90px; text-align: center; }
     tr.selected { background: rgba(0,95,115,0.06); }
     th { color: var(--accent); font-weight: 700; background: #fff2dc; position: sticky; top: 0; }
     .table-wrap { max-height: 80vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
@@ -299,37 +300,36 @@ def build_html(rows, excel_path, base_url):
           <table>
             <thead>
                                                                 <tr>
-                                                                        <th>Thoi gian dong</th>
-                                                                        <th>Ma vach</th>
-                                                                        <th>Người dùng</th>
-                                                                        <th>STT</th>
-                                                                        <th>Thời gian bắt đầu</th>
-                                                                        <th>Thời gian đếm</th>
-                                                                        <th>Tên video</th>
+                                                                    <th>Thoi gian dong</th>
+                                                                    <th>Ma vach</th>
+                                                                    <th>Người dùng</th>
+                                                                    <th>STT</th>
+                                                                    <th>Thời gian bắt đầu</th>
+                                                                    <th>Thời gian đếm</th>
+                                                                    <th>Tên video</th>
+                                                                    <th>Video</th>
                                                                 </tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
                 </div>
                 <div id="rowActions" style="margin:10px 0"></div>
-        <div class="pager">
-          <button class="btn" id="prevBtn" onclick="prevPage()">Trang truoc</button>
-          <button class="btn" id="nextBtn" onclick="nextPage()">Trang sau</button>
-          <span class="pager-info" id="pageInfo">Trang 1/1</span>
-        </div>
-      </section>
-
-      <section class="card">
-                <div class="video-box">
-                    <h3 class="video-title">Xem video don</h3>
-                    <p id="videoInfo">Chon mot don de xem video.</p>
-                    <video id="player" controls></video>
-                    <div style="margin-top:10px">
-                        <h4 style="margin:6px 0 8px;color:var(--accent)">Danh sách Excel hôm nay</h4>
-                        <div id="excelList" style="font-size:13px;color:var(--muted)">Đang tải...</div>
-                    </div>
+                <div class="pager">
+                    <button class="btn" id="prevBtn" onclick="prevPage()">Trang truoc</button>
+                    <button class="btn" id="nextBtn" onclick="nextPage()">Trang sau</button>
+                    <span class="pager-info" id="pageInfo">Trang 1/1</span>
                 </div>
-      </section>
+                <!-- Video viewer moved below the table -->
+                <div class="video-box" style="margin-top:12px">
+                        <h3 class="video-title">Xem video don</h3>
+                        <p id="videoInfo">Chon mot don de xem video.</p>
+                        <video id="player" controls></video>
+                        <div style="margin-top:10px">
+                                <h4 style="margin:6px 0 8px;color:var(--accent)">Danh sách Excel hôm nay</h4>
+                                <div id="excelList" style="font-size:13px;color:var(--muted)">Đang tải...</div>
+                        </div>
+                </div>
+            </section>
     </div>
   </div>
 
@@ -430,8 +430,8 @@ def build_html(rows, excel_path, base_url):
         }
 
     function renderTable() {
-            if (data.length === 0) {
-                                rowsEl.innerHTML = '<tr><td colspan="7" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                        if (data.length === 0) {
+                                                                rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
@@ -451,7 +451,8 @@ def build_html(rows, excel_path, base_url):
                 const actualIndex = start + index;
                 const disabled = item.exists ? '' : 'disabled';
                 const selectedClass = (actualIndex === selectedIndex) ? 'selected' : '';
-                                                                return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '</tr>';
+                const btn = '<button class="btn" ' + disabled + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
+                                                                return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + btn + '</td>' + '</tr>';
             }).join('');
                         renderRowActions();
     }
