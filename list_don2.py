@@ -365,7 +365,7 @@ def build_html(rows, excel_path, base_url):
     th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 10px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* limit video name width and narrow the final Video column */
     table th:nth-child(7), table td:nth-child(7) { width: 260px; max-width: 260px; }
-    table th:nth-child(8), table td:nth-child(8) { width: 90px; max-width: 90px; text-align: center; }
+    table th:nth-child(8), table td:nth-child(8), table th:nth-child(9), table td:nth-child(9) { width: 90px; max-width: 90px; text-align: center; }
     tr.selected { background: rgba(0,95,115,0.06); }
     th { color: var(--accent); font-weight: 700; background: #fff2dc; position: sticky; top: 0; }
     .table-wrap { max-height: 80vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
@@ -552,7 +552,7 @@ def build_html(rows, excel_path, base_url):
 
     function renderTable() {
                         if (data.length === 0) {
-                                                                rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                                                                rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
         countEl.textContent = 'Tong don: 0';
         pageInfoEl.textContent = 'Trang 0/0';
         prevBtn.disabled = true;
