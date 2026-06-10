@@ -124,6 +124,7 @@ def load_today_orders():
             "user": user_char,
             "user_count": '',
             "video_path": str(resolved_video),
+            "video_name": resolved_video.name if exists else '',
             "elapsed": str(elapsed),
             "exists": exists,
             "sort_key": sort_key.isoformat(),
