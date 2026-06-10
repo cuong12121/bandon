@@ -11,6 +11,7 @@ import mimetypes
 import os
 import sys
 import shlex
+import time
 import json
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +59,26 @@ def get_today_excel_path():
     now = datetime.now()
     daily_dir = EXCEL_ROOT / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
     return daily_dir / f"{now.strftime('%Y%m%d')}.xlsx"
+
+
+def save_workbook_with_retry(workbook, path, retries=3, delay=0.5):
+    """Try to save `workbook` to `path` with retries on PermissionError.
+
+    Returns True on success, raises the last exception on failure.
+    """
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            workbook.save(path)
+            return True
+        except PermissionError as e:
+            last_exc = e
+            time.sleep(delay)
+        except Exception:
+            # non-permission errors should surface immediately
+            raise
+    # if we exit loop, raise informative PermissionError
+    raise PermissionError(f"Failed to save {path} after {retries} attempts: {last_exc}")
 
 
 def resolve_video_path(raw_path):
@@ -223,7 +244,10 @@ def append_order(barcode_value, elapsed_seconds=None):
         wb = Workbook()
         ws = wb.active
         ws.append(["close_time", "barcode", "user", "user_count", "video_path", "elapsed_seconds"])
-        wb.save(excel_path)
+        try:
+            save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+        except PermissionError as pe:
+            raise Exception(f'failed saving excel (permission denied): {pe}')
 
     wb = load_workbook(excel_path)
     ws = wb.active
@@ -913,7 +937,10 @@ def main():
             try:
                 target_row = int(row)
                 ws.cell(row=target_row, column=cut_col, value=str(out_path))
-                wb.save(excel_path)
+                try:
+                    save_workbook_with_retry(wb, excel_path, retries=5, delay=0.5)
+                except PermissionError as pe:
+                    return jsonify({'ok': False, 'error': f'failed writing excel (permission denied): {pe}'}), 500
             except Exception as e:
                 return jsonify({'ok': False, 'error': 'failed writing excel: ' + str(e)}), 500
 
