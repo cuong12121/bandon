@@ -626,12 +626,16 @@ def build_html(rows, excel_path, base_url):
                         const provisional = { close_time: nowStr, barcode: barcode, user: '', user_count: '', video_path: '', video_name: '', cutvideo: '', cut_exists: false, cutvideo_name: '', elapsed: '', exists: false, row_idx: null };
                         data.unshift(provisional);
                         currentPage = 1;
+                        // ensure immediate render of the provisional row
+                        renderTable();
                         selectRow(0);
                         setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 80);
                     } catch (err) { console.error('Provisional insert failed', err); }
 
                     // refresh from server to synchronize real data
                     await refreshData();
+                    // explicit render after refresh (refreshData also calls renderTable)
+                    try { renderTable(); } catch (e) { /* ignore */ }
                     try {
                         // try to find the authoritative row returned by server and select it
                         const idx = data.findIndex(i => String(i.barcode || '') === String(barcode));
