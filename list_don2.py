@@ -1319,8 +1319,19 @@ def main():
                     ]
                     subprocess.run(cmd2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-                # write the path back to the excel (column 5)
-                ws.cell(row=it['row'], column=5, value=str(out_path))
+                # write the path back to the excel under 'cutvideo' column (create column if needed)
+                # find or create 'cutvideo' header
+                cut_col = None
+                for c in range(1, ws.max_column + 1):
+                    h = ws.cell(row=1, column=c).value
+                    if isinstance(h, str) and h.strip().lower() == 'cutvideo':
+                        cut_col = c
+                        break
+                if cut_col is None:
+                    cut_col = ws.max_column + 1
+                    ws.cell(row=1, column=cut_col, value='cutvideo')
+
+                ws.cell(row=it['row'], column=cut_col, value=str(out_path))
                 output_files.append(out_path)
                 prev = end
 
