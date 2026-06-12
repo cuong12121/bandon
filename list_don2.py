@@ -550,35 +550,55 @@ def build_html(rows, excel_path, base_url):
             rowActionsEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px">' + btn + '<div style="color:var(--muted)">' + (item.video_name || item.video_path || '') + '</div></div>';
         }
 
-    function renderTable() {
-                        if (data.length === 0) {
-                                                                rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
-        countEl.textContent = 'Tong don: 0';
-        pageInfoEl.textContent = 'Trang 0/0';
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
-        return;
-      }
-      const totalPages = Math.ceil(data.length / pageSize);
-      if (currentPage > totalPages) currentPage = totalPages;
-      const start = (currentPage - 1) * pageSize;
-      const end = start + pageSize;
-      const pageRows = data.slice(start, end);
-      countEl.textContent = 'Tong don: ' + data.length;
-      pageInfoEl.textContent = 'Trang ' + currentPage + '/' + totalPages;
-      prevBtn.disabled = currentPage <= 1;
-      nextBtn.disabled = currentPage >= totalPages;
-                        rowsEl.innerHTML = pageRows.map((item, index) => {
+        function renderTable() {
+            if (data.length === 0) {
+                rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Khong co du lieu don cho ngay hom nay.</td></tr>';
+                countEl.textContent = 'Tong don: 0';
+                pageInfoEl.textContent = 'Trang 0/0';
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+                return;
+            }
+            const totalPages = Math.ceil(data.length / pageSize);
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageRows = data.slice(start, end);
+            countEl.textContent = 'Tong don: ' + data.length;
+            pageInfoEl.textContent = 'Trang ' + currentPage + '/' + totalPages;
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= totalPages;
+
+            rowsEl.innerHTML = pageRows.map((item, index) => {
                 const actualIndex = start + index;
-                const disabled = item.exists ? '' : 'disabled';
                 const selectedClass = (actualIndex === selectedIndex) ? 'selected' : '';
-                            const cutBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
-                            const viewBtn = '<button class="btn" ' + (item.exists ? '' : 'disabled') + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
-                            const viewCutBtn = '<button class="btn" ' + (item.cut_exists ? '' : 'disabled') + ' onclick="playCut(data[' + actualIndex + '])">Xem Cut</button>';
-                                                                            return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' + '<td>' + item.close_time + '</td>' + '<td>' + item.barcode + '</td>' + '<td>' + (item.user || '') + '</td>' + '<td>' + (item.user_count || '') + '</td>' + '<td>' + (item.start_time || '') + '</td>' + '<td>' + (item.elapsed || '') + '</td>' + '<td>' + (item.video_name || '') + '</td>' + '<td>' + cutBtn + ' ' + viewBtn + '</td>' + '<td>' + (item.cut_exists ? viewCutBtn : '') + '</td>' + '</tr>';
+                const cutBtn = '<button class="btn" ' + (item && item.exists ? '' : 'disabled') + ' onclick="cutManual(' + actualIndex + ')">Cắt</button>';
+                const viewBtn = '<button class="btn" ' + (item && item.exists ? '' : 'disabled') + ' onclick="playVideo(data[' + actualIndex + '])">Xem</button>';
+                const viewCutBtn = '<button class="btn" ' + (item && item.cut_exists ? '' : 'disabled') + ' onclick="playCut(data[' + actualIndex + '])">Xem Cut</button>';
+
+                const close_time = (item && item.close_time) ? item.close_time : '';
+                const barcode = (item && item.barcode) ? item.barcode : '';
+                const user = (item && item.user) ? item.user : '';
+                const user_count = (item && item.user_count) ? item.user_count : '';
+                const start_time = (item && item.start_time) ? item.start_time : '';
+                const elapsed = (item && item.elapsed) ? item.elapsed : '';
+                const video_name = (item && item.video_name) ? item.video_name : '';
+
+                return '<tr class="' + selectedClass + '" onclick="selectRow(' + actualIndex + ')">' +
+                             '<td>' + close_time + '</td>' +
+                             '<td>' + barcode + '</td>' +
+                             '<td>' + user + '</td>' +
+                             '<td>' + user_count + '</td>' +
+                             '<td>' + start_time + '</td>' +
+                             '<td>' + elapsed + '</td>' +
+                             '<td>' + video_name + '</td>' +
+                             '<td>' + cutBtn + ' ' + viewBtn + '</td>' +
+                             '<td>' + (item && item.cut_exists ? viewCutBtn : '') + '</td>' +
+                             '</tr>';
             }).join('');
-                        renderRowActions();
-    }
+
+            renderRowActions();
+        }
 
     function nextPage() { const totalPages = Math.ceil(data.length / pageSize); if (currentPage < totalPages) { currentPage += 1; renderTable(); } }
     function prevPage() { if (currentPage > 1) { currentPage -= 1; renderTable(); } }
@@ -599,19 +619,26 @@ def build_html(rows, excel_path, base_url):
                 if (resp.ok) {
                     scanInput.value = ''; scanInput.focus();
                     // do NOT stop or reset the timer here; timer keeps running until user presses Stop
+                    // Insert a provisional row so the scan shows up immediately in the UI
+                    try {
+                        const now = new Date();
+                        const nowStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+                        const provisional = { close_time: nowStr, barcode: barcode, user: '', user_count: '', video_path: '', video_name: '', cutvideo: '', cut_exists: false, cutvideo_name: '', elapsed: '', exists: false, row_idx: null };
+                        data.unshift(provisional);
+                        currentPage = 1;
+                        selectRow(0);
+                        setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 80);
+                    } catch (err) { console.error('Provisional insert failed', err); }
+
+                    // refresh from server to synchronize real data
                     await refreshData();
                     try {
-                        // find the newly added row by barcode and select it
+                        // try to find the authoritative row returned by server and select it
                         const idx = data.findIndex(i => String(i.barcode || '') === String(barcode));
                         if (idx !== -1) {
                             currentPage = Math.floor(idx / pageSize) + 1;
-                            // selectRow will call renderTable()
                             selectRow(idx);
-                            // ensure the selected row is visible
-                            setTimeout(() => {
-                                const sel = document.querySelector('tr.selected');
-                                if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'});
-                            }, 120);
+                            setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 120);
                         }
                     } catch (err) {
                         console.error('Auto-select error', err);
