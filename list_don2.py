@@ -617,35 +617,52 @@ def build_html(rows, excel_path, base_url):
                 elapsed = (Date.now() - timerStart) / 1000;
                 const resp = await fetch('/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode, elapsed_seconds: elapsed }) });
                 if (resp.ok) {
+                    // try to use authoritative row returned by server to insert directly
+                    let serverJson = null;
+                    try { serverJson = await resp.json(); } catch (e) { serverJson = null; }
+
                     scanInput.value = ''; scanInput.focus();
                     // do NOT stop or reset the timer here; timer keeps running until user presses Stop
-                    // Insert a provisional row so the scan shows up immediately in the UI
+                    // prepare a provisional row for immediate feedback
+                    let provisional = null;
                     try {
                         const now = new Date();
                         const nowStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
-                        const provisional = { close_time: nowStr, barcode: barcode, user: '', user_count: '', video_path: '', video_name: '', cutvideo: '', cut_exists: false, cutvideo_name: '', elapsed: '', exists: false, row_idx: null };
-                        data.unshift(provisional);
-                        currentPage = 1;
-                        // ensure immediate render of the provisional row
-                        renderTable();
-                        selectRow(0);
-                        setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 80);
-                    } catch (err) { console.error('Provisional insert failed', err); }
+                        provisional = { close_time: nowStr, barcode: barcode, user: '', user_count: '', video_path: '', video_name: '', cutvideo: '', cut_exists: false, cutvideo_name: '', elapsed: '', exists: false, row_idx: null };
+                    } catch (err) { console.error('Provisional build failed', err); }
 
-                    // refresh from server to synchronize real data
-                    await refreshData();
-                    // explicit render after refresh (refreshData also calls renderTable)
-                    try { renderTable(); } catch (e) { /* ignore */ }
-                    try {
-                        // try to find the authoritative row returned by server and select it
-                        const idx = data.findIndex(i => String(i.barcode || '') === String(barcode));
-                        if (idx !== -1) {
-                            currentPage = Math.floor(idx / pageSize) + 1;
-                            selectRow(idx);
-                            setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 120);
+                    if (serverJson && serverJson.row) {
+                        // insert authoritative row returned by server
+                        try {
+                            data.unshift(serverJson.row);
+                            currentPage = 1;
+                            renderTable();
+                            selectRow(0);
+                            setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 80);
+                        } catch (err) { console.error('Insert authoritative row failed', err); }
+                    } else {
+                        // fallback: insert provisional then refresh full data
+                        try {
+                            if (provisional) data.unshift(provisional);
+                            currentPage = 1;
+                            // ensure immediate render of the provisional row
+                            selectRow(0);
+                            setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 80);
+                        } catch (err) { console.error('Provisional insert failed', err); }
+
+                        // refresh from server to synchronize real data
+                        await refreshData();
+                        try {
+                            // try to find the authoritative row returned by server and select it
+                            const idx = data.findIndex(i => String(i.barcode || '') === String(barcode));
+                            if (idx !== -1) {
+                                currentPage = Math.floor(idx / pageSize) + 1;
+                                selectRow(idx);
+                                setTimeout(() => { const sel = document.querySelector('tr.selected'); if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'}); }, 120);
+                            }
+                        } catch (err) {
+                            console.error('Auto-select error', err);
                         }
-                    } catch (err) {
-                        console.error('Auto-select error', err);
                     }
                 } else { alert('Lỗi khi gửi mã vạch'); }
             } catch (e) { alert('Lỗi kết nối: ' + e.message); }
@@ -918,6 +935,22 @@ def main():
             if not barcode:
                 return jsonify({'ok': False, 'error': 'missing barcode'}), 400
             append_order(barcode, elapsed)
+            # attempt to return the authoritative row so client can insert it directly
+            try:
+                rows, _ = load_today_orders()
+                # rows are sorted newest-first; find first matching barcode
+                matched = None
+                for r in rows:
+                    try:
+                        if str(r.get('barcode', '')) == str(barcode):
+                            matched = r
+                            break
+                    except Exception:
+                        continue
+                if matched is not None:
+                    return jsonify({'ok': True, 'row': matched})
+            except Exception:
+                pass
             return jsonify({'ok': True})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
