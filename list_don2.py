@@ -1346,35 +1346,25 @@ def main():
             if not src.exists():
                 return jsonify({'ok': False, 'error': 'Excel file for today not found'}), 404
 
-            # load workbook to validate that no close_time cells are empty
-            wb = load_workbook(src)
-            ws = wb.active
-            for r in range(2, ws.max_row + 1):
-                v = ws.cell(row=r, column=1).value
-                if v is None or str(v).strip() == '':
-                    return jsonify({'ok': False, 'error': 'Some close_time cells are empty; not saving copy'}), 400
+            save_dir = src.parent / 'save'
+            save_dir.mkdir(parents=True, exist_ok=True)
 
-            d = src.parent
-            base = src.stem  # YYYYMMDD
-            # find existing numbered copies
-            nums = []
-            for p in d.glob(f"{base}*.xlsx"):
-                m = re.match(rf"{re.escape(base)}(?:_(\d+))?\.xlsx$", p.name)
-                if m:
-                    nums.append(int(m.group(1)) if m.group(1) else 0)
-            next_num = 1
-            if nums:
-                next_num = max(nums) + 1
-            dest = d / f"{base}_{next_num}.xlsx"
+            dest = save_dir / src.name
+            if dest.exists():
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                dest = save_dir / f"{src.stem}_{ts}{src.suffix}"
 
-            # create a copy with the close_time column cleared (so original remains intact)
-            # we already have the workbook loaded from src; clear column 1 for data rows
-            for r in range(2, ws.max_row + 1):
-                ws.cell(row=r, column=1, value='')
+            try:
+                shutil.copy2(src, dest)
+            except Exception as e:
+                return jsonify({'ok': False, 'error': f'copy failed: {e}'}), 500
 
-            wb.save(dest)
-            files = [p.name for p in sorted(d.glob(f"{base}*.xlsx"))]
-            return jsonify({'ok': True, 'file': dest.name, 'files': files})
+            try:
+                os.remove(src)
+            except Exception as e:
+                return jsonify({'ok': False, 'error': f'delete failed: {e}', 'saved': str(dest)}), 500
+
+            return jsonify({'ok': True, 'saved': str(dest.name)})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
