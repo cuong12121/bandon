@@ -722,8 +722,9 @@ def build_html(rows, excel_path, base_url):
                     alert('Lỗi khi hoàn tất: ' + txt);
                 } else {
                     const j = await resp.json();
-                    alert('Hoàn tất lưu: ' + (j.file ? j.file : 'Không có file mới'));
-                    await refreshExcelList();
+                    alert('Hoàn tất lưu: ' + (j.saved ? j.saved : 'Không có file mới'));
+                    // refresh the whole page so UI reflects the moved/deleted Excel
+                    location.reload();
                 }
             } catch (e) {
                 alert('Lỗi khi kết nối: ' + e.message);
