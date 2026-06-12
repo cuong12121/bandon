@@ -600,6 +600,22 @@ def build_html(rows, excel_path, base_url):
                     scanInput.value = ''; scanInput.focus();
                     // do NOT stop or reset the timer here; timer keeps running until user presses Stop
                     await refreshData();
+                    try {
+                        // find the newly added row by barcode and select it
+                        const idx = data.findIndex(i => String(i.barcode || '') === String(barcode));
+                        if (idx !== -1) {
+                            currentPage = Math.floor(idx / pageSize) + 1;
+                            // selectRow will call renderTable()
+                            selectRow(idx);
+                            // ensure the selected row is visible
+                            setTimeout(() => {
+                                const sel = document.querySelector('tr.selected');
+                                if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'});
+                            }, 120);
+                        }
+                    } catch (err) {
+                        console.error('Auto-select error', err);
+                    }
                 } else { alert('Lỗi khi gửi mã vạch'); }
             } catch (e) { alert('Lỗi kết nối: ' + e.message); }
     }
