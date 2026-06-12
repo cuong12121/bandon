@@ -1050,14 +1050,53 @@ def main():
     @app.route('/cut_end', methods=['POST'])
     def cut_end():
         try:
-            # prefer explicit video path stored in Excel (column 5);
-            # fallback to latest file in today's folder
-            latest = find_video_from_excel() or find_latest_video_file()
-            if not latest:
-                return jsonify({'ok': False, 'error': 'No video found for today'}), 404
+            # collect distinct existing video paths referenced in today's Excel (column 5)
+            excel_path = get_today_excel_path()
+            if not excel_path.exists():
+                return jsonify({'ok': False, 'error': 'Excel not found for today'}), 404
 
-            files = cut_segments_from_video(latest)
-            return jsonify({'ok': True, 'files': [str(p) for p in files]})
+            wb = load_workbook(excel_path)
+            ws = wb.active
+            vids = []
+            for r in range(2, ws.max_row + 1):
+                v = ws.cell(row=r, column=5).value
+                if not v:
+                    continue
+                p = Path(str(v))
+                if not p.is_absolute():
+                    p = (BASE_DIR / p).resolve()
+                if p.exists():
+                    vids.append(p)
+
+            # deduplicate while preserving order
+            seen = set()
+            uniq_vids = []
+            for p in vids:
+                try:
+                    key = str(p)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    uniq_vids.append(p)
+                except Exception:
+                    continue
+
+            if not uniq_vids:
+                # fallback to single latest file if no explicit references found
+                latest = find_video_from_excel() or find_latest_video_file()
+                if not latest:
+                    return jsonify({'ok': False, 'error': 'No video found for today'}), 404
+                uniq_vids = [latest]
+
+            all_files = []
+            for vp in uniq_vids:
+                try:
+                    files = cut_segments_from_video(vp)
+                    all_files.extend(files)
+                except Exception as e:
+                    print(f"[ERROR] cut for {vp} failed: {e}")
+
+            return jsonify({'ok': True, 'files': [str(p) for p in all_files]})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
